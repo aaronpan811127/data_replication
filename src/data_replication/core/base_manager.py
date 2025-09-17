@@ -49,10 +49,10 @@ class BaseManager:
         self.db_ops = DatabricksOperations(spark)
         self.audit_logger = AuditLogger(
             logging_spark,
-            config,
+            self.db_ops,
             logger,
-            audit_table=config.audit_config.audit_table,
-            run_id=self.run_id
+            self.run_id,
+            self.config.audit_config.audit_table
         )
 
     def log_run_result(self, result: RunResult) -> None:

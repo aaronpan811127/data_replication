@@ -10,6 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from databricks.connect import DatabricksSession
 from data_replication.audit.logger import DataReplicationLogger
 from data_replication.backup.backup_manager import BackupManager
 from data_replication.config.loader import ConfigLoader
@@ -22,6 +23,11 @@ def create_logger(config) -> DataReplicationLogger:
     if hasattr(config, "logging") and config.logging:
         logger.setup_logging(config.logging)
     return logger
+
+
+def create_spark_session() -> DatabricksSession:
+    """Create Databricks Spark session."""
+    return DatabricksSession.builder.serverless(True).getOrCreate()
 
 
 def validate_backup_configuration(config) -> bool:
@@ -87,8 +93,12 @@ def run_backup_command(
             logger.info("Dry-run mode: would execute backup operations for the above catalogs")
             return 0
 
+        # Create Spark sessions
+        spark = create_spark_session()
+        logging_spark = create_spark_session()
+        
         # Run backup operations
-        backup_manager = BackupManager(config, logger)
+        backup_manager = BackupManager(config, spark, logging_spark, logger)
         summary = backup_manager.run_backup_operations()
 
         # Log results
