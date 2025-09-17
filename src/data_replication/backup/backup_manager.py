@@ -13,19 +13,12 @@ from data_replication.config.models import (
     RunSummary,
 )
 from data_replication.core.base_manager import BaseManager
-from data_replication.audit.audit_logger import AuditLogger
 from .backup_provider import BackupProvider
 
 
 
 class BackupManager(BaseManager):
     """Manager for coordinating backup operations across multiple catalogs."""
-
-    def __init__(self, config, spark, logger, run_id):
-        super().__init__(config, spark, logger, run_id)
-        self.audit_logger = AuditLogger(
-            spark, self.db_ops, logger, run_id, config.audit_config.backup_audit_table
-        )
 
     def run_backup_operations(self) -> RunSummary:
         """

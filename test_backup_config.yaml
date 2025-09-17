@@ -1,19 +1,19 @@
 version: "1.0"
 
 source_databricks_connect_config:
-  host: "https://source-databricks-instance"
+  host: "https://adb-984752964297111.11.azuredatabricks.net"
   token:
-    secret_scope: "my_secret_scope"
-    secret_key: "my_secret_key"
+    secret_scope: "test_kr"
+    secret_key: "pat_source"
 
 target_databricks_connect_config:
-  host: "https://target-databricks-instance"
+  host: "https://e2-demo-field-eng.cloud.databricks.com"
   token:
-    secret_scope: "my_secret_scope"
-    secret_key: "my_secret_key"
+    secret_scope: "test_kr"
+    secret_key: "pat_target"
 
 audit_config:
-  backup_audit_table: "aaron.audit.backup_logs"
+  audit_table: "aaron.audit.audit_loggging"
 
 target_catalogs:
   - catalog_name: "aaron"

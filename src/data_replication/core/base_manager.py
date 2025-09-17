@@ -28,6 +28,7 @@ class BaseManager:
         self,
         config: ReplicationSystemConfig,
         spark: DatabricksSession,
+        logging_spark: DatabricksSession,
         logger: DataReplicationLogger,
         run_id: Optional[str] = None,
     ):
@@ -42,9 +43,17 @@ class BaseManager:
         """
         self.config = config
         self.spark = spark
+        self.logging_spark = logging_spark
         self.logger = logger
         self.run_id = run_id or str(uuid.uuid4())
         self.db_ops = DatabricksOperations(spark)
+        self.audit_logger = AuditLogger(
+            logging_spark,
+            config,
+            logger,
+            audit_table=config.audit_config.audit_table,
+            run_id=self.run_id
+        )
 
     def log_run_result(self, result: RunResult) -> None:
         """

@@ -28,8 +28,7 @@ class SecretConfig(BaseModel):
 class AuditConfig(BaseModel):
     """Configuration for audit tables"""
 
-    backup_audit_table: Optional[str] = None
-    replication_audit_table: Optional[str] = None
+    audit_table: Optional[str] = None
 
 
 class DatabricksConnectConfig(BaseModel):
@@ -140,7 +139,6 @@ class ReconciliationConfig(BaseModel):
     enabled: bool = False
     delta_share_config: Optional[DeltaShareConfig] = None
     source_catalog: Optional[str] = None
-    audit_log_table: Optional[str] = None
     recon_outputs_catalog: Optional[str] = None
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
@@ -152,7 +150,6 @@ class ReconciliationConfig(BaseModel):
         if self.enabled:
             required_fields = [
                 "source_catalog",
-                "audit_log_table",
                 "recon_outputs_catalog",
             ]
             missing_fields = [

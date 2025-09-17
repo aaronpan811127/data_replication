@@ -11,16 +11,13 @@ from functools import wraps
 from typing import Optional
 
 from databricks.connect import DatabricksSession
-
 from data_replication.audit.logger import DataReplicationLogger
 from data_replication.config.models import RetryConfig
 
 
-def create_spark_session(config, host, token) -> DatabricksSession:
-    """Create Spark session configured for workspace."""
-
+def create_spark_session(host, token) -> DatabricksSession:
+    """Create a Databricks Spark session using the provided host and token."""
     # Note: In production, tokens should be retrieved from Databricks secrets
-    os.environ["DATABRICKS_HOST"] = config.host
     os.environ["DATABRICKS_HOST"] = host
     os.environ["DATABRICKS_TOKEN"] = token
     # Create Databricks session with serverless compute
