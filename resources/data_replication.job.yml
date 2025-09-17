@@ -1,0 +1,38 @@
+# The main job for data_replication.
+resources:
+  jobs:
+    data_replication_job:
+      name: data_replication_job
+
+      trigger:
+        # Run this job every day, exactly one day from the last run; see https://docs.databricks.com/api/workspace/jobs/create#trigger
+        periodic:
+          interval: 1
+          unit: DAYS
+
+      #email_notifications:
+      #  on_failure:
+      #    - your_email@example.com
+
+      tasks:
+
+        - task_key: main_task
+          job_cluster_key: job_cluster
+          python_wheel_task:
+            package_name: data_replication
+            entry_point: main
+          libraries:
+            # By default we just include the .whl file generated for the data_replication package.
+            # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
+            # for more information on how to add other libraries.
+            - whl: ../dist/*.whl
+
+      job_clusters:
+        - job_cluster_key: job_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            data_security_mode: SINGLE_USER
+            autoscale:
+                min_workers: 1
+                max_workers: 4

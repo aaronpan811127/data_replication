@@ -1,0 +1,40 @@
+version: "1.0"
+
+source_databricks_connect_config:
+  host: "https://source-databricks-instance"
+  token:
+    secret_scope: "my_secret_scope"
+    secret_key: "my_secret_key"
+
+target_databricks_connect_config:
+  host: "https://target-databricks-instance"
+  token:
+    secret_scope: "my_secret_scope"
+    secret_key: "my_secret_key"
+
+audit_config:
+  backup_audit_table: "aaron.audit.backup_logs"
+
+target_catalogs:
+  - catalog_name: "aaron"
+    schema_filter_expression: "databaseName like 'bronze_%'"
+    backup_config:
+      enabled: true
+      source_catalog: "aaron"
+      backup_catalog: "aaron_dr"
+    target_schemas:
+      - schema_name: "bronze_1"
+        tables:
+          - table_name: "table_1"
+          - table_name: "table_2"          
+          - table_name: "sample_trips_ldp"
+        exclude_tables:
+          - table_name: "table_3"
+
+concurrency:
+  max_workers: 2
+  timeout_seconds: 1800
+
+retry:
+  max_attempts: 2
+  retry_delay_seconds: 3
