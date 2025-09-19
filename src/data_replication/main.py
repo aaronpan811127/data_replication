@@ -17,6 +17,7 @@ from .backup.backup_manager import BackupManager
 from .config.loader import ConfigLoader
 from .core.exceptions import ConfigurationError
 from .replication.replication_manager import ReplicationManager
+from .reconciliation.reconciliation_manager import ReconciliationManager
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -64,6 +65,23 @@ def run_replication_only(
         return 1
 
     logger.info("All replication operations completed successfully")
+    return 0
+
+
+def run_reconciliation_only(
+    config, logger, run_id: str, target_host: str, target_token: str
+) -> int:
+    """Run only reconciliation operations."""
+    spark = create_spark_session(target_host, target_token)
+
+    reconciliation_manager = ReconciliationManager(config, spark, spark, logger, run_id)
+    summary = reconciliation_manager.run_reconciliation_operations()
+
+    if summary.failed_operations > 0:
+        logger.error(f"Reconciliation completed with {summary.failed_operations} failures")
+        return 1
+
+    logger.info("All reconciliation operations completed successfully")
     return 0
 
 
@@ -192,7 +210,26 @@ def main():
                 return 1
 
         if args.operation in ["all", "reconciliation"]:
-            logger.info("Reconciliation operations not yet implemented")
+            # Check if reconciliation is configured
+            reconciliation_catalogs = [
+                cat
+                for cat in config.target_catalogs
+                if cat.reconciliation_config and cat.reconciliation_config.enabled
+            ]
+
+            if reconciliation_catalogs:
+                logger.info(
+                    f"Running reconciliation operations for {len(reconciliation_catalogs)} catalogs"
+                )
+
+                result = run_reconciliation_only(
+                    config, logger, run_id, target_host, target_token
+                )
+                if result != 0:
+                    return result
+            elif args.operation == "reconciliation":
+                logger.error("No catalogs configured for reconciliation")
+                return 1
 
         logger.info("All requested operations completed successfully")
         return 0

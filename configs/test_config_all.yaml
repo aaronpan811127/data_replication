@@ -26,13 +26,21 @@ target_catalogs:
       enabled: true
       source_catalog: "aaron_dr_azure_shared"
       intermediate_catalog: "aaron_dr"
-      enforce_schema: true      
+      enforce_schema: true
+    reconciliation_config:
+      enabled: true
+      source_catalog: "aaron_azure_shared"
+      recon_outputs_catalog: "recon_results"
+      schema_check: true
+      row_count_check: true
+      missing_data_check: true
     target_schemas:
       - schema_name: "bronze_1"
         tables:
           - table_name: "table_1"
           - table_name: "table_2"          
           - table_name: "sample_trips_ldp"
+          - table_name: "delta_table_1"
         exclude_tables:
           - table_name: "table_3"
 

@@ -394,7 +394,7 @@ class ReplicationProvider:
         """Replicate table directly to target."""
 
         # Use insert overwrite for streaming tables/materialized views
-        step1_query = self._build_insert_overwrite_query(source_table, target_table)
+        step1_query = f"CREATE OR REPLACE TABLE {target_table} DEEP CLONE {source_table}"
 
         return *replication_operation(step1_query), step1_query, None
 

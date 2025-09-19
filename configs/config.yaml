@@ -14,6 +14,9 @@ target_databricks_connect_config:
     secret_scope: "my_secret_scope"
     secret_key: "my_secret_key"   
 
+audit_config:
+  audit_table: "aaron.audit.audit_loggging"
+  
 # replicator configuration
 target_catalogs:
   - catalog_name: "aaron"
@@ -22,19 +25,17 @@ target_catalogs:
       enabled: true
       source_catalog: "aaron"       
       backup_catalog: "aaron_dr"
-      audit_log_table: "operations.audit.backup_logs"
-    delta_share_config:
-      enabled: true
-      recipient_id: "azure_recipient"
-      shared_catalog: "aaron_dr"        
-      share_name: "aaron_dr_aws"
-      shared_catalog_name: "aaron_dr_aws_shared"
     replication_config:
       enabled: true
       source_catalog: "aaron_dr_aws_shared"
       intermediate_catalog: "aaron_dr"
       enforce_schema: true
-      audit_log_table: "operations.audit.replication_logs"
+      delta_share_config:
+        enabled: true
+        recipient_id: "azure_recipient"
+        shared_catalog: "aaron_dr"        
+        share_name: "aaron_dr_aws"
+        shared_catalog_name: "aaron_dr_aws_shared"      
     reconciliation_config:
       enabled: true
       delta_share_config:
@@ -44,7 +45,6 @@ target_catalogs:
         share_name: "aaron_aws"
         shared_catalog_name: "aaron_aws_shared"
       source_catalog: "aaron_aws_shared"
-      audit_log_table: "operations.audit.reconciliation_logs"
       recon_outputs_catalog: "recon_results"
       schema_check: true
       row_count_check: true
