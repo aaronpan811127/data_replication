@@ -1,5 +1,7 @@
 version: "1.0"
 
+replication_group: "aaron_test_group"
+
 source_databricks_connect_config:
   name: "azure"
   host: "https://adb-984752964297111.11.azuredatabricks.net"
@@ -19,31 +21,28 @@ audit_config:
 
 target_catalogs:
   - catalog_name: "aaron"
-    schema_filter_expression: "databaseName like 'bronze_%'"
     backup_config:
       enabled: true
-      source_catalog: "aaron"
-      backup_catalog: "aaron_dr"
     replication_config:
       enabled: true
-      source_catalog: "aaron_dr_azure_shared"
-      intermediate_catalog: "aaron_dr"
-      enforce_schema: true
     reconciliation_config:
       enabled: true
-      source_catalog: "aaron_azure_shared"
-      recon_outputs_catalog: "recon_results"
-      schema_check: true
-      row_count_check: true
-      missing_data_check: true
     target_schemas:
       - schema_name: "bronze_1"
         tables:
-          - table_name: "table_1"
-          - table_name: "table_2"          
-          - table_name: "sample_trips_ldp"
-          - table_name: "delta_table_1"
+          # - table_name: "table_1"
+          # - table_name: "table_2"
+          # - table_name: "sample_trips_ldp"
+          # - table_name: "delta_table_1"
           # - table_name: "mat_view1"
+          # - table_name: "mat_view2"
+          # - table_name: "mat_view3"
+          # - table_name: "mat_view4"
+          # - table_name: "mat_view5"
+          # - table_name: "mat_view6"
+          # - table_name: "mat_view7"
+          # - table_name: "mat_view8"
+          - table_name: "mat_view9"
         exclude_tables:
           - table_name: "table_3"
 

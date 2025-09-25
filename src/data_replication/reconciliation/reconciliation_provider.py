@@ -190,7 +190,9 @@ class ReconciliationProvider:
                         results.append(result)
 
         except Exception as e:
-            error_msg = f"Failed to reconcile schema {target_catalog}.{schema_name}: {str(e)}"
+            error_msg = (
+                f"Failed to reconcile schema {target_catalog}.{schema_name}: {str(e)}"
+            )
             self.logger.error(error_msg, exc_info=True)
             result = RunResult(
                 operation_type="reconciliation",
@@ -226,8 +228,10 @@ class ReconciliationProvider:
         target_catalog = self.catalog_config.catalog_name
         source_table = f"{source_catalog}.{schema_name}.{table_name}"
         target_table = f"{target_catalog}.{schema_name}.{table_name}"
-        
-        recon_table_prefix = f"{reconciliation_config.recon_outputs_catalog}.{schema_name}.{table_name}"
+
+        recon_table_prefix = (
+            f"{reconciliation_config.recon_outputs_catalog}.{schema_name}.{table_name}"
+        )
 
         self.logger.info(
             f"Starting reconciliation: {source_table} vs {target_table}",
@@ -235,6 +239,10 @@ class ReconciliationProvider:
         )
 
         try:
+            # Refresh source table delta share metadata
+            if not self.spark.catalog.tableExists(source_table):
+                self.spark.catalog.tableExists(source_table)
+
             reconciliation_results = {}
             failed_checks = []
 
@@ -246,7 +254,10 @@ class ReconciliationProvider:
             # Schema check
             if reconciliation_config.schema_check:
                 schema_result = self._perform_schema_check(
-                    source_table, target_table, recon_table_prefix, reconciliation_operation
+                    source_table,
+                    target_table,
+                    recon_table_prefix,
+                    reconciliation_operation,
                 )
                 reconciliation_results["schema_check"] = schema_result
                 if not schema_result["passed"]:
@@ -255,7 +266,10 @@ class ReconciliationProvider:
             # Row count check
             if reconciliation_config.row_count_check:
                 row_count_result = self._perform_row_count_check(
-                    source_table, target_table, recon_table_prefix, reconciliation_operation
+                    source_table,
+                    target_table,
+                    recon_table_prefix,
+                    reconciliation_operation,
                 )
                 reconciliation_results["row_count_check"] = row_count_result
                 if not row_count_result["passed"]:
@@ -264,7 +278,10 @@ class ReconciliationProvider:
             # Missing data check
             if reconciliation_config.missing_data_check:
                 missing_data_result = self._perform_missing_data_check(
-                    source_table, target_table, recon_table_prefix, reconciliation_operation
+                    source_table,
+                    target_table,
+                    recon_table_prefix,
+                    reconciliation_operation,
                 )
                 reconciliation_results["missing_data_check"] = missing_data_result
                 if not missing_data_result["passed"]:
@@ -345,21 +362,21 @@ class ReconciliationProvider:
                     "source_table": source_table,
                     "target_table": target_table,
                     "recon_outputs_prefix": recon_table_prefix,
-                }
+                },
             )
 
     def _perform_schema_check(
-        self, 
-        source_table: str, 
-        target_table: str, 
+        self,
+        source_table: str,
+        target_table: str,
         recon_table_prefix: str,
-        reconciliation_operation
+        reconciliation_operation,
     ) -> Dict[str, Any]:
         """Perform schema comparison between source and target tables."""
         try:
             # Create schema comparison result table
             schema_comparison_table = f"{recon_table_prefix}_schema_comparison"
-            
+
             schema_query = f"""
             CREATE OR REPLACE TABLE {schema_comparison_table} AS
             WITH source_schema AS (
@@ -419,50 +436,52 @@ class ReconciliationProvider:
             ORDER BY column_name
             """
 
-            result, last_exception, attempt, max_attempts = reconciliation_operation(schema_query)
-            
+            result, last_exception, attempt, max_attempts = reconciliation_operation(
+                schema_query
+            )
+
             if not result:
                 return {
                     "passed": False,
                     "error": f"Schema check query failed: {last_exception}",
-                    "output_table": schema_comparison_table
+                    "output_table": schema_comparison_table,
                 }
 
             # Check if there are any mismatches
             mismatch_count_df = self.spark.sql(f"""
                 SELECT COUNT(*) as mismatch_count 
-                FROM {schema_comparison_table} 
+                FROM {schema_comparison_table}
                 WHERE comparison_result != 'match'
             """)
-            
+
             mismatch_count = mismatch_count_df.collect()[0]["mismatch_count"]
-            
+
             return {
                 "passed": mismatch_count == 0,
                 "mismatch_count": mismatch_count,
                 "output_table": schema_comparison_table,
-                "details": "Schema check completed successfully"
+                "details": "Schema check completed successfully",
             }
 
         except Exception as e:
             return {
                 "passed": False,
                 "error": f"Schema check failed: {str(e)}",
-                "output_table": schema_comparison_table
+                "output_table": schema_comparison_table,
             }
 
     def _perform_row_count_check(
-        self, 
-        source_table: str, 
-        target_table: str, 
+        self,
+        source_table: str,
+        target_table: str,
         recon_table_prefix: str,
-        reconciliation_operation
+        reconciliation_operation,
     ) -> Dict[str, Any]:
         """Perform row count comparison between source and target tables."""
         try:
             # Create row count comparison result table
             row_count_table = f"{recon_table_prefix}_row_count_comparison"
-            
+
             row_count_query = f"""
             CREATE OR REPLACE TABLE {row_count_table} AS
             WITH source_count AS (
@@ -485,60 +504,62 @@ class ReconciliationProvider:
             FROM source_count, target_count
             """
 
-            result, last_exception, attempt, max_attempts = reconciliation_operation(row_count_query)
-            
+            result, last_exception, attempt, max_attempts = reconciliation_operation(
+                row_count_query
+            )
+
             if not result:
                 return {
                     "passed": False,
                     "error": f"Row count check query failed: {last_exception}",
-                    "output_table": row_count_table
+                    "output_table": row_count_table,
                 }
 
             # Get the comparison result
             comparison_df = self.spark.sql(f"SELECT * FROM {row_count_table}")
             comparison_result = comparison_df.collect()[0]
-            
+
             return {
                 "passed": comparison_result["comparison_result"] == "match",
                 "source_count": comparison_result["source_row_count"],
                 "target_count": comparison_result["target_row_count"],
                 "difference": comparison_result["row_count_diff"],
                 "output_table": row_count_table,
-                "details": "Row count check completed successfully"
+                "details": "Row count check completed successfully",
             }
 
         except Exception as e:
             return {
                 "passed": False,
                 "error": f"Row count check failed: {str(e)}",
-                "output_table": row_count_table
+                "output_table": row_count_table,
             }
 
     def _perform_missing_data_check(
-        self, 
-        source_table: str, 
-        target_table: str, 
+        self,
+        source_table: str,
+        target_table: str,
         recon_table_prefix: str,
-        reconciliation_operation
+        reconciliation_operation,
     ) -> Dict[str, Any]:
         """Perform missing data check between source and target tables."""
         try:
             # Create missing data comparison result table
             missing_data_table = f"{recon_table_prefix}_missing_data_comparison"
-            
+
             # Get common columns between source and target
             common_fields = self.db_ops.get_common_fields(source_table, target_table)
-            
+
             if not common_fields:
                 return {
                     "passed": False,
                     "error": "No common fields found between source and target tables",
-                    "output_table": missing_data_table
+                    "output_table": missing_data_table,
                 }
-            
+
             # Create a hash-based comparison for data content
             field_list = "`" + "`,`".join(common_fields) + "`"
-            
+
             missing_data_query = f"""
             CREATE OR REPLACE TABLE {missing_data_table} AS
             WITH source_hashes AS (
@@ -584,48 +605,58 @@ class ReconciliationProvider:
             FROM missing_in_source
             """
 
-            result, last_exception, attempt, max_attempts = reconciliation_operation(missing_data_query)
-            
+            result, last_exception, attempt, max_attempts = reconciliation_operation(
+                missing_data_query
+            )
+
             if not result:
                 return {
                     "passed": False,
                     "error": f"Missing data check query failed: {last_exception}",
-                    "output_table": missing_data_table
+                    "output_table": missing_data_table,
                 }
 
             # Get the comparison results
             comparison_df = self.spark.sql(f"SELECT * FROM {missing_data_table}")
             comparison_results = comparison_df.collect()
-            
+
             total_missing = sum(row["row_count"] for row in comparison_results)
-            
-            missing_breakdown = {row["issue_type"]: row["row_count"] for row in comparison_results}
-            
+
+            missing_breakdown = {
+                row["issue_type"]: row["row_count"] for row in comparison_results
+            }
+
             return {
                 "passed": total_missing == 0,
                 "total_missing_rows": total_missing,
                 "missing_breakdown": missing_breakdown,
                 "common_fields_count": len(common_fields),
                 "output_table": missing_data_table,
-                "details": "Missing data check completed successfully"
+                "details": "Missing data check completed successfully",
             }
 
         except Exception as e:
             return {
                 "passed": False,
                 "error": f"Missing data check failed: {str(e)}",
-                "output_table": missing_data_table
+                "output_table": missing_data_table,
             }
 
     def _get_schemas(
-        self,
+        self, catalog_name: str = None
     ) -> List[Tuple[str, List[TableConfig]]]:
         """
-        Get list of schemas to reconcile based on configuration.
+        Get list of schemas to replicate based on configuration.
 
         Returns:
-            List of schema names and table list to reconcile
+            List of schema names and table list to replicate
         """
+
+        if catalog_name:
+            # Replicate all schemas
+            schema_list = self.db_ops.get_all_schemas(catalog_name)
+            return [[item, []] for item in schema_list]
+
         if self.catalog_config.target_schemas:
             # Use explicitly configured schemas
             return [
@@ -647,10 +678,8 @@ class ReconciliationProvider:
                 self.catalog_config.schema_filter_expression,
             )
         else:
-            # Reconcile all schemas
-            schema_list = self.db_ops.get_all_schemas(
-                self.catalog_config.catalog_name
-            )
+            # Replicate all schemas
+            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
 
         return [[item, []] for item in schema_list]
 
@@ -658,18 +687,18 @@ class ReconciliationProvider:
         self, catalog_name: str, schema_name: str, table_list: List[TableConfig]
     ) -> List[str]:
         """
-        Get list of tables to reconcile in a schema based on configuration.
+        Get list of tables to replicate in a schema based on configuration.
 
         Args:
             catalog_name: Name of the catalog
             schema_name: Name of the schema
-            table_list: List of table configurations to reconcile in the schema
+            table_list: List of table configurations to replicate in the schema
         Returns:
-            List of table names to reconcile
+            List of table names to replicate
         """
         if table_list:
             # Use explicitly configured tables
             return [item.table_name for item in table_list]
 
-        # Reconcile all tables in the schema
+        # Replicate all tables in the schema
         return self.db_ops.get_tables_in_schema(catalog_name, schema_name)

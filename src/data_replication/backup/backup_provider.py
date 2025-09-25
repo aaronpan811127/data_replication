@@ -124,7 +124,11 @@ class BackupProvider:
         """
         results = []
         backup_config = self.catalog_config.backup_config
-        catalog_name = backup_config.source_catalog
+        catalog_name = (
+            backup_config.source_catalog
+            if backup_config.source_catalog
+            else self.catalog_config.catalog_name
+        )
         start_time = datetime.now(timezone.utc)
 
         try:
@@ -222,7 +226,11 @@ class BackupProvider:
         """
         start_time = datetime.now(timezone.utc)
         backup_config = self.catalog_config.backup_config
-        source_catalog = backup_config.source_catalog
+        source_catalog = (
+            backup_config.source_catalog
+            if backup_config.source_catalog
+            else self.catalog_config.catalog_name
+        )
         source_table = f"{source_catalog}.{schema_name}.{table_name}"
         backup_table = f"{backup_config.backup_catalog}.{schema_name}.{table_name}"
 
@@ -232,20 +240,27 @@ class BackupProvider:
         )
 
         try:
-            actual_source_table, dlt_flag = self.db_ops.get_table_name_and_dlt_flag(source_table)
+            table_details = self.db_ops.get_table_details(source_table)
+            actual_source_table = table_details["table_name"]
+            dlt_flag = table_details["is_dlt"]
 
-            # Perform backup using deep clone
+            # Perform backup using deep clone and unset parentTableId property
             backup_query = f"""CREATE OR REPLACE TABLE {backup_table}
-                            DEEP CLONE {actual_source_table}"""
+                            DEEP CLONE {actual_source_table};
+                            """
+
+            unset_query = f"""ALTER TABLE {backup_table}
+                            UNSET TBLPROPERTIES (spark.sql.internal.pipelines.parentTableId)"""
 
             # Use custom retry decorator with logging
             @retry_with_logging(self.retry, self.logger)
-            def backup_operation(query: str):
-                self.spark.sql(query)
+            def backup_operation(backup_query: str, unset_query: str):
+                self.spark.sql(backup_query)
+                self.spark.sql(unset_query)
                 return True
 
             result, last_exception, attempt, max_attempts = backup_operation(
-                backup_query
+                backup_query, unset_query
             )
 
             end_time = datetime.now(timezone.utc)
@@ -269,6 +284,7 @@ class BackupProvider:
                         "backup_table": backup_table,
                         "source_table": actual_source_table,
                         "backup_query": backup_query,
+                        "dlt_flag": dlt_flag,
                     },
                     attempt_number=attempt,
                     max_attempts=max_attempts,
@@ -297,7 +313,7 @@ class BackupProvider:
                         "backup_table": backup_table,
                         "source_table": actual_source_table,
                         "backup_query": backup_query,
-                    },                    
+                    },
                     attempt_number=attempt,
                     max_attempts=max_attempts,
                 )
@@ -327,11 +343,12 @@ class BackupProvider:
                     "backup_table": backup_table,
                     "source_table": actual_source_table,
                     "backup_query": backup_query,
-                }
+                    "dlt_flag": dlt_flag,
+                },
             )
 
     def _get_schemas(
-        self,
+        self, catalog_name: str = None
     ) -> List[Tuple[str, List[TableConfig]]]:
         """
         Get list of schemas to replicate based on configuration.
@@ -339,6 +356,12 @@ class BackupProvider:
         Returns:
             List of schema names and table list to replicate
         """
+
+        if catalog_name:
+            # Replicate all schemas
+            schema_list = self.db_ops.get_all_schemas(catalog_name)
+            return [[item, []] for item in schema_list]
+
         if self.catalog_config.target_schemas:
             # Use explicitly configured schemas
             return [
@@ -356,14 +379,12 @@ class BackupProvider:
         if self.catalog_config.schema_filter_expression:
             # Use schema filter expression
             schema_list = self.db_ops.get_schemas_by_filter(
-                self.catalog_config.backup_config.source_catalog,
+                self.catalog_config.catalog_name,
                 self.catalog_config.schema_filter_expression,
             )
         else:
             # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(
-                self.catalog_config.backup_config.source_catalog
-            )
+            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
 
         return [[item, []] for item in schema_list]
 

@@ -34,6 +34,7 @@ class AuditConfig(BaseModel):
 class DatabricksConnectConfig(BaseModel):
     """Configuration for Databricks Connect."""
 
+    name: str
     host: str
     token: SecretConfig
 
@@ -54,45 +55,42 @@ class SchemaConfig(BaseModel):
 class BackupConfig(BaseModel):
     """Configuration for backup operations."""
 
-    enabled: bool = False
+    enabled: bool = True
     source_catalog: Optional[str] = None
-    backup_catalog: Optional[str] = None
+    backup_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
 
-    @model_validator(mode="after")
-    def validate_backup_config(self):
-        """Validate required fields when backup is enabled."""
-        if self.enabled:
-            required_fields = ["source_catalog", "backup_catalog"]
-            missing_fields = [
-                field for field in required_fields if getattr(self, field) is None
-            ]
+    # @model_validator(mode="after")
+    # def validate_backup_config(self):
+    #     """Validate required fields when backup is enabled."""
+    #     if self.enabled:
+    #         required_fields = ["source_catalog", "backup_catalog"]
+    #         missing_fields = [
+    #             field for field in required_fields if getattr(self, field) is None
+    #         ]
 
-            if missing_fields:
-                raise ValueError(
-                    f"When backup is enabled, the following fields are required: "
-                    f"{missing_fields}"
-                )
-        return self
+    #         if missing_fields:
+    #             raise ValueError(
+    #                 f"When backup is enabled, the following fields are required: "
+    #                 f"{missing_fields}"
+    #             )
+    #     return self
 
 
 class DeltaShareConfig(BaseModel):
     """Configuration for Delta Share operations."""
 
-    enabled: bool = False
+    enabled: bool = True
     recipient_id: Optional[str] = None
-    shared_catalog: Optional[str] = None
-    share_name: Optional[str] = None
-    shared_catalog_name: Optional[str] = None
+    shared_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
+    share_name: Optional[str] = '__replication_internal_aaron_to_aws'
+    shared_catalog_name: Optional[str] = '__replication_internal_aaron_from_azure'
 
     @model_validator(mode="after")
     def validate_deltashare_config(self):
         """Validate required fields when delta share is enabled."""
         if self.enabled:
             required_fields = [
-                "recipient_id",
-                "shared_catalog",
-                "share_name",
-                "shared_catalog_name",
+                "recipient_id"
             ]
             missing_fields = [
                 field for field in required_fields if getattr(self, field) is None
@@ -109,37 +107,37 @@ class DeltaShareConfig(BaseModel):
 class ReplicationConfig(BaseModel):
     """Configuration for replication operations."""
 
-    enabled: bool = False
-    source_catalog: Optional[str] = None
+    enabled: bool = True
+    source_catalog: Optional[str] = '__replication_internal_aaron_from_azure'
     intermediate_catalog: Optional[str] = None
     enforce_schema: Optional[bool] = True
 
-    @model_validator(mode="after")
-    def validate_replication_config(self):
-        """Validate required fields when replication is enabled."""
-        if self.enabled:
-            required_fields = [
-                "source_catalog",
-            ]
-            missing_fields = [
-                field for field in required_fields if getattr(self, field) is None
-            ]
+    # @model_validator(mode="after")
+    # def validate_replication_config(self):
+    #     """Validate required fields when replication is enabled."""
+    #     if self.enabled:
+    #         required_fields = [
+    #             "source_catalog",
+    #         ]
+    #         missing_fields = [
+    #             field for field in required_fields if getattr(self, field) is None
+    #         ]
 
-            if missing_fields:
-                raise ValueError(
-                    f"When replication is enabled, the following fields are "
-                    f"required: {missing_fields}"
-                )
-        return self
+    #         if missing_fields:
+    #             raise ValueError(
+    #                 f"When replication is enabled, the following fields are "
+    #                 f"required: {missing_fields}"
+    #             )
+    #     return self
 
 
 class ReconciliationConfig(BaseModel):
     """Configuration for reconciliation operations."""
 
-    enabled: bool = False
+    enabled: bool = True
     delta_share_config: Optional[DeltaShareConfig] = None
-    source_catalog: Optional[str] = None
-    recon_outputs_catalog: Optional[str] = None
+    source_catalog: Optional[str] = 'aaron_azure_shared'
+    recon_outputs_catalog: Optional[str] = 'aaron_azure_shared_recon_results'
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
@@ -149,7 +147,6 @@ class ReconciliationConfig(BaseModel):
         """Validate required fields when reconciliation is enabled."""
         if self.enabled:
             required_fields = [
-                "source_catalog",
                 "recon_outputs_catalog",
             ]
             missing_fields = [
@@ -238,6 +235,7 @@ class ReplicationSystemConfig(BaseModel):
     """Root configuration model for the replication system."""
 
     version: str
+    replication_group: str
     source_databricks_connect_config: DatabricksConnectConfig
     target_databricks_connect_config: DatabricksConnectConfig
     audit_config: AuditConfig

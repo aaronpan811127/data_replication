@@ -125,23 +125,23 @@ class DatabricksOperations:
             Dictionary containing table details
         """
         try:
-            details = (
-                self.spark.sql(f"DESCRIBE DETAIL {table_name}").collect()[0].asDict()
-            )
-            return details
-        except Exception:
-            details = (
+            details_str = (
                 self.spark.sql(f"DESCRIBE EXTENDED {table_name}")
                 .filter(col("col_name") == "Table Properties")
                 .select("data_type")
                 .collect()[0][0]
             )
             properties = {}
-            result_clean = details.replace("[", "").replace("]", "")
+            result_clean = details_str.replace("[", "").replace("]", "")
             properties = dict(
                 item.split("=") for item in result_clean.split(",") if "=" in item
             )
             return {"properties": properties}
+        except Exception:
+            details = (
+                self.spark.sql(f"DESCRIBE DETAIL {table_name}").collect()[0].asDict()
+            )
+            return details
 
     def table_exists(self, table_name: str) -> bool:
         """
@@ -181,15 +181,24 @@ class DatabricksOperations:
 
         return table_details["properties"].get("pipelines.pipelineId", None)
 
-    def get_table_name_and_dlt_flag(self, table_name: str) -> Tuple[str, bool]:
-        pipeline_id = self.get_pipeline_id(table_name)
-        if pipeline_id:
-            # Handle streaming table or materialized view
-            actual_source_table = self._get_internal_table_name(table_name, pipeline_id)
-            return actual_source_table, True
+    def get_table_details(self, table_name: str) -> Tuple[str, bool]:
+        if self.spark.catalog.tableExists(table_name):
+            pipeline_id = self.get_pipeline_id(table_name)
+            if pipeline_id:
+                # Handle streaming table or materialized view
+                actual_table_name = self._get_internal_table_name(
+                    table_name, pipeline_id
+                )
+                return {
+                    "table_name": actual_table_name,
+                    "is_dlt": True,
+                    "pipeline_id": pipeline_id,
+                }
 
-        # If not a DLT table, just return the original table name and "delta"
-        return table_name, False
+            # If not a DLT table, just return the original table name and "delta"
+            return {"table_name": table_name, "is_dlt": False, "pipeline_id": None}
+
+        raise Exception(f"Table {table_name} does not exist")
 
     def _get_internal_table_name(self, table_name: str, pipeline_id: str) -> str:
         """
@@ -222,6 +231,7 @@ class DatabricksOperations:
         full_internal_table_name = (
             f"`__databricks_internal`.`{internal_schema_name}`.`{table_name_only}`"
         )
+        # print(full_internal_table_name)
         if self.table_exists(full_internal_table_name):
             return full_internal_table_name
 
@@ -229,6 +239,7 @@ class DatabricksOperations:
         full_internal_table_name = (
             f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
         )
+        # print(full_internal_table_name)
         if self.table_exists(full_internal_table_name):
             return full_internal_table_name
 
@@ -236,6 +247,16 @@ class DatabricksOperations:
         full_internal_table_name = (
             f"{catalog_name}.{table_name.split('.')[1]}.`{internal_table_name}`"
         )
+        # print(full_internal_table_name)
+        if self.table_exists(full_internal_table_name):
+            return full_internal_table_name
+
+        # Check possible locations for the internal table 4
+        internal_table_name = f"__materialization_mat_{table_name_only}_1"
+        full_internal_table_name = (
+            f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
+        )
+        # print(full_internal_table_name)
         if self.table_exists(full_internal_table_name):
             return full_internal_table_name
 

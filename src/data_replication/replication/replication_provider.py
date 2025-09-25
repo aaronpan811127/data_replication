@@ -11,6 +11,7 @@ from typing import List, Tuple
 
 from databricks.connect import DatabricksSession
 
+# from delta.tables import DeltaTable
 from data_replication.audit.logger import DataReplicationLogger
 from data_replication.config.models import (
     RetryConfig,
@@ -236,9 +237,21 @@ class ReplicationProvider:
         )
 
         try:
-            actual_target_table, dlt_flag = self.db_ops.get_table_name_and_dlt_flag(
-                target_table
-            )
+            table_details = self.db_ops.get_table_details(target_table)
+            actual_target_table = table_details["table_name"]
+            dlt_flag = table_details["is_dlt"]
+            pipeline_id = table_details["pipeline_id"]
+
+            # Refresh source table delta share metadata
+            if not self.spark.catalog.tableExists(source_table):
+                self.spark.catalog.tableExists(source_table)
+
+            if self.db_ops.get_table_fields(
+                source_table
+            ) != self.db_ops.get_table_fields(actual_target_table):
+                raise Exception(
+                    f"Schema mismatch between intermediate table {source_table} and target table {target_table}"
+                )
 
             # Use custom retry decorator with logging
             @retry_with_logging(self.retry, self.logger)
@@ -246,23 +259,59 @@ class ReplicationProvider:
                 self.spark.sql(query)
                 return True
 
+            # def replication_operation(source_table: str, target_table: str):
+            #     dt = DeltaTable.forName(self.spark, source_table)
+            #     if self.spark.catalog.tableExists(target_table):
+            #         desc_detail_df = self.spark.sql(f"DESC DETAIL {target_table}")
+            #         properties = desc_detail_df.select("properties").first()[
+            #             "properties"
+            #         ]
+            #         dt.clone(
+            #             target=target_table,
+            #             isShallow=False,
+            #             replace=True,
+            #             properties=properties,
+            #         )
+            #     else:
+            #         dt.clone(
+            #             target=target_table,
+            #             isShallow=False,
+            #             replace=True
+            #         )
+            #     return True
+
             # Determine replication strategy based on table type and config
             if replication_config.intermediate_catalog:
                 # Two-step replication via intermediate catalog
-                result, last_exception, attempt, max_attempts, step1_query, step2_query  = (
-                    self._replicate_via_intermediate(
-                        source_table,
-                        actual_target_table,
-                        schema_name,
-                        table_name,
-                        dlt_flag,
-                        replication_operation,
-                    )
+                (
+                    result,
+                    last_exception,
+                    attempt,
+                    max_attempts,
+                    step1_query,
+                    step2_query,
+                ) = self._replicate_via_intermediate(
+                    source_table,
+                    actual_target_table,
+                    schema_name,
+                    table_name,
+                    pipeline_id,
+                    replication_operation,
                 )
             else:
                 # Direct replication
-                result, last_exception, attempt, max_attempts, step1_query, step2_query = self._replicate_direct(
-                    source_table, actual_target_table, dlt_flag, replication_operation
+                (
+                    result,
+                    last_exception,
+                    attempt,
+                    max_attempts,
+                    step1_query,
+                    step2_query,
+                ) = self._replicate_direct(
+                    source_table,
+                    actual_target_table,
+                    pipeline_id,
+                    replication_operation,
                 )
 
             end_time = datetime.now(timezone.utc)
@@ -350,7 +399,7 @@ class ReplicationProvider:
                     "intermediate_catalog": replication_config.intermediate_catalog,
                     "step1_query": step1_query,
                     "step2_query": step2_query,
-                }
+                },
             )
 
     def _replicate_via_intermediate(
@@ -359,7 +408,7 @@ class ReplicationProvider:
         target_table: str,
         schema_name: str,
         table_name: str,
-        dlt_flag: bool,
+        pipeline_id: str,
         replication_operation,
     ) -> tuple:
         """Replicate table via intermediate catalog."""
@@ -369,7 +418,9 @@ class ReplicationProvider:
         )
 
         # Step 1: Deep clone to intermediate
-        step1_query = f"CREATE OR REPLACE TABLE {intermediate_table} DEEP CLONE {source_table}"
+        step1_query = (
+            f"CREATE OR REPLACE TABLE {intermediate_table} DEEP CLONE {source_table}"
+        )
 
         result1, last_exception, attempt, max_attempts = replication_operation(
             step1_query
@@ -377,24 +428,38 @@ class ReplicationProvider:
         if not result1:
             return result1, last_exception, attempt, max_attempts, step1_query, None
 
-        # Step 2: Use insert overwrite to replicate from intermediate to target
-        step2_query = self._build_insert_overwrite_query(
-            intermediate_table, target_table
-            )
+        # # Step 2: Use insert overwrite to replicate from intermediate to target
+        # step2_query = self._build_insert_overwrite_query(
+        #     intermediate_table, target_table
+        # )
 
-        return *replication_operation(step2_query), step1_query, step2_query
+        # Use deep clone
+        step2_query = self._build_deep_clone_query(
+            source_table, target_table, pipeline_id
+        )
+
+        return (
+            *replication_operation(step2_query),
+            step1_query,
+            step2_query,
+        )
 
     def _replicate_direct(
         self,
         source_table: str,
         target_table: str,
-        dlt_flag: bool,
+        pipeline_id: str,
         replication_operation,
     ) -> tuple:
         """Replicate table directly to target."""
 
-        # Use insert overwrite for streaming tables/materialized views
-        step1_query = f"CREATE OR REPLACE TABLE {target_table} DEEP CLONE {source_table}"
+        # # Use insert overwrite for streaming tables/materialized views
+        # step1_query = self._build_insert_overwrite_query(source_table, target_table)
+
+        # Use deep clone
+        step1_query = self._build_deep_clone_query(
+            source_table, target_table, pipeline_id
+        )
 
         return *replication_operation(step1_query), step1_query, None
 
@@ -417,8 +482,22 @@ class ReplicationProvider:
             # Fallback to SELECT * if no common fields found
             return f"INSERT OVERWRITE {target_table} SELECT * FROM {source_table}"
 
+    def _build_deep_clone_query(
+        self, source_table: str, target_table: str, pipeline_id: str = None
+    ) -> str:
+        """Build deep clone query."""
+
+        sql = f"CREATE OR REPLACE TABLE {target_table} DEEP CLONE {source_table} "
+
+        if pipeline_id:
+            # For dlt streaming tables/materialized views, use CREATE OR REPLACE TABLE with pipelineId property
+            return f"{sql} TBLPROPERTIES ('pipelines.pipelineId'='{pipeline_id}')"
+        else:
+            # For regular tables, just return the deep clone query
+            return sql
+
     def _get_schemas(
-        self,
+        self, catalog_name: str = None
     ) -> List[Tuple[str, List[TableConfig]]]:
         """
         Get list of schemas to replicate based on configuration.
@@ -426,6 +505,12 @@ class ReplicationProvider:
         Returns:
             List of schema names and table list to replicate
         """
+
+        if catalog_name:
+            # Replicate all schemas
+            schema_list = self.db_ops.get_all_schemas(catalog_name)
+            return [[item, []] for item in schema_list]
+
         if self.catalog_config.target_schemas:
             # Use explicitly configured schemas
             return [
@@ -443,14 +528,12 @@ class ReplicationProvider:
         if self.catalog_config.schema_filter_expression:
             # Use schema filter expression
             schema_list = self.db_ops.get_schemas_by_filter(
-                self.catalog_config.replication_config.source_catalog,
+                self.catalog_config.catalog_name,
                 self.catalog_config.schema_filter_expression,
             )
         else:
             # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(
-                self.catalog_config.replication_config.source_catalog
-            )
+            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
 
         return [[item, []] for item in schema_list]
 

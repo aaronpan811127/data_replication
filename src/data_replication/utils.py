@@ -55,9 +55,9 @@ def retry_with_logging(
 
                     result = func(*args, **kwargs)
 
-                    logger.info(
-                        f"{func.__name__} succeeded on attempt {attempt}/{retry_config.max_attempts}"
-                    )
+                    # logger.info(
+                    #     f"{func.__name__} succeeded on attempt {attempt}/{retry_config.max_attempts}"
+                    # )
 
                     return result, None, attempt, retry_config.max_attempts
 
@@ -72,6 +72,9 @@ def retry_with_logging(
                         logger.debug(f"Waiting {current_delay:.1f}s before retry...")
                         time.sleep(current_delay)
                         current_delay *= 2.0  # Exponential backoff
+                        logger.info(
+                                f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}"
+                            )
                     else:
                         logger.error(
                             f"{func.__name__} failed after {retry_config.max_attempts} attempts"
