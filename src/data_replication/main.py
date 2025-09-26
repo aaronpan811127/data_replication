@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 import uuid
 from databricks.sdk import WorkspaceClient
-from .utils import create_spark_session
-from .audit.logger import DataReplicationLogger
-from .config.loader import ConfigLoader
-from .exceptions import ConfigurationError
-from .providers.provider_factory import ProviderFactory
+from data_replication.utils import create_spark_session
+from data_replication.audit.logger import DataReplicationLogger
+from data_replication.config.loader import ConfigLoader
+from data_replication.exceptions import ConfigurationError
+from data_replication.providers.provider_factory import ProviderFactory
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -41,6 +41,7 @@ def run_backup_only(
     backup_factory = ProviderFactory(
         "backup", config, spark, logging_spark, logger, run_id
     )
+    logger.info(f"Starting backup operations in {config.execute_at.value} environment")
     summary = backup_factory.run_backup_operations()
 
     if summary.failed_operations > 0:
@@ -60,6 +61,9 @@ def run_replication_only(
     replication_factory = ProviderFactory(
         "replication", config, spark, spark, logger, run_id
     )
+    logger.info(
+        f"Starting replication operations in {config.execute_at.value} environment"
+    )
     summary = replication_factory.run_replication_operations()
 
     if summary.failed_operations > 0:
@@ -78,6 +82,9 @@ def run_reconciliation_only(
 
     reconciliation_factory = ProviderFactory(
         "reconciliation", config, spark, spark, logger, run_id
+    )
+    logger.info(
+        f"Starting reconciliation operations in {config.execute_at.value} environment"
     )
     summary = reconciliation_factory.run_reconciliation_operations()
 
@@ -103,7 +110,7 @@ def main():
     parser.add_argument(
         "--operation",
         "-o",
-        choices=["all", "backup", "delta_share", "replication", "reconciliation"],
+        choices=["all", "backup", "replication", "reconciliation"],
         default="all",
         help="Specific operation to run (default: all enabled operations)",
     )
@@ -191,6 +198,11 @@ def main():
                 config.target_databricks_connect_config.token.secret_scope,
                 config.target_databricks_connect_config.token.secret_key,
             )
+
+        logger.info(
+            f"Log run_id {run_id} in {config.audit_config.audit_table if config.audit_config and config.audit_config.audit_table else 'No audit table configured'}"
+        )
+
         if args.operation in ["all", "backup"]:
             # Check if backup is configured
             backup_catalogs = [
@@ -225,8 +237,8 @@ def main():
                 logger.error("No catalogs configured for backup")
                 return 1
 
-        if args.operation in ["all", "delta_share"]:
-            logger.info("Delta share operations not yet implemented")
+        # if args.operation in ["all", "delta_share"]:
+        #     logger.info("Delta share operations not yet implemented")
 
         if args.operation in ["all", "replication"]:
             # Check if replication is configured

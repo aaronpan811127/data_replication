@@ -17,7 +17,7 @@ from .config.models import RetryConfig
 
 def create_spark_session(host, token) -> DatabricksSession:
     """Create a Databricks Spark session using the provided host and token."""
-    if not host and not token:
+    if host and token:
         os.environ["DATABRICKS_HOST"] = host
         os.environ["DATABRICKS_TOKEN"] = token
     # Create Databricks session with serverless compute
