@@ -300,7 +300,8 @@ class ReconciliationProvider(BaseProvider):
         try:
             # Create schema comparison result table
             schema_comparison_table = f"{recon_table_prefix}_schema_comparison"
-
+            source_catalog = source_table.split(".")[0]
+            target_catalog = target_table.split(".")[0]
             schema_query = f"""
             CREATE OR REPLACE TABLE {schema_comparison_table} AS
             WITH source_schema AS (
@@ -312,7 +313,7 @@ class ReconciliationProvider(BaseProvider):
                     is_nullable,
                     column_default,
                     ordinal_position
-                FROM information_schema.columns 
+                FROM {source_catalog}.information_schema.columns 
                 WHERE table_name = split('{source_table}', '\\.')[2]
                   AND table_schema = split('{source_table}', '\\.')[1]
                   AND table_catalog = split('{source_table}', '\\.')[0]
@@ -326,7 +327,7 @@ class ReconciliationProvider(BaseProvider):
                     is_nullable,
                     column_default,
                     ordinal_position
-                FROM information_schema.columns 
+                FROM {target_catalog}.information_schema.columns 
                 WHERE table_name = split('{target_table}', '\\.')[2]
                   AND table_schema = split('{target_table}', '\\.')[1]
                   AND table_catalog = split('{target_table}', '\\.')[0]

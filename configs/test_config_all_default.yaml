@@ -29,6 +29,8 @@ target_catalogs:
       enabled: true
     reconciliation_config:
       enabled: true
+      source_catalog: aaron_azure_shared
+      recon_outputs_catalog: aaron_azure_shared_recon_results
     target_schemas:
       - schema_name: "bronze_1"
         # tables:

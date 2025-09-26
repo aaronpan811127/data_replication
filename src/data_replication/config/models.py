@@ -25,6 +25,7 @@ class ExecuteAt(str, Enum):
     TARGET = "target"
     EXTERNAL = "external"
 
+
 class SecretConfig(BaseModel):
     """Configuration for Databricks secrets."""
 
@@ -59,92 +60,60 @@ class SchemaConfig(BaseModel):
     tables: Optional[List[TableConfig]] = None
     exclude_tables: Optional[List[TableConfig]] = None
 
+
 class BackupConfig(BaseModel):
     """Configuration for backup operations."""
 
     enabled: bool = True
     source_catalog: Optional[str] = None
-    backup_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
-
-    # @model_validator(mode="after")
-    # def validate_backup_config(self):
-    #     """Validate required fields when backup is enabled."""
-    #     if self.enabled:
-    #         required_fields = ["source_catalog", "backup_catalog"]
-    #         missing_fields = [
-    #             field for field in required_fields if getattr(self, field) is None
-    #         ]
-
-    #         if missing_fields:
-    #             raise ValueError(
-    #                 f"When backup is enabled, the following fields are required: "
-    #                 f"{missing_fields}"
-    #             )
-    #     return self
+    backup_catalog: Optional[str] = None
 
 
-class DeltaShareConfig(BaseModel):
-    """Configuration for Delta Share operations."""
+# Delta Share support will be enabled in a future release
+# class DeltaShareConfig(BaseModel):
+#     """Configuration for Delta Share operations."""
 
-    enabled: bool = True
-    recipient_id: Optional[str] = None
-    shared_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
-    share_name: Optional[str] = '__replication_internal_aaron_to_aws'
-    shared_catalog_name: Optional[str] = '__replication_internal_aaron_from_azure'
+#     enabled: bool = True
+#     recipient_id: Optional[str] = None
+#     shared_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
+#     share_name: Optional[str] = '__replication_internal_aaron_to_aws'
+#     shared_catalog_name: Optional[str] = '__replication_internal_aaron_from_azure'
 
-    @model_validator(mode="after")
-    def validate_deltashare_config(self):
-        """Validate required fields when delta share is enabled."""
-        if self.enabled:
-            required_fields = [
-                "recipient_id"
-            ]
-            missing_fields = [
-                field for field in required_fields if getattr(self, field) is None
-            ]
+#     @model_validator(mode="after")
+#     def validate_deltashare_config(self):
+#         """Validate required fields when delta share is enabled."""
+#         if self.enabled:
+#             required_fields = [
+#                 "recipient_id"
+#             ]
+#             missing_fields = [
+#                 field for field in required_fields if getattr(self, field) is None
+#             ]
 
-            if missing_fields:
-                raise ValueError(
-                    f"When delta share is enabled, the following fields are "
-                    f"required: {missing_fields}"
-                )
-        return self
+#             if missing_fields:
+#                 raise ValueError(
+#                     f"When delta share is enabled, the following fields are "
+#                     f"required: {missing_fields}"
+#                 )
+#         return self
 
 
 class ReplicationConfig(BaseModel):
     """Configuration for replication operations."""
 
     enabled: bool = True
-    source_catalog: Optional[str] = '__replication_internal_aaron_from_azure'
+    source_catalog: Optional[str] = None
     intermediate_catalog: Optional[str] = None
     enforce_schema: Optional[bool] = True
-
-    # @model_validator(mode="after")
-    # def validate_replication_config(self):
-    #     """Validate required fields when replication is enabled."""
-    #     if self.enabled:
-    #         required_fields = [
-    #             "source_catalog",
-    #         ]
-    #         missing_fields = [
-    #             field for field in required_fields if getattr(self, field) is None
-    #         ]
-
-    #         if missing_fields:
-    #             raise ValueError(
-    #                 f"When replication is enabled, the following fields are "
-    #                 f"required: {missing_fields}"
-    #             )
-    #     return self
 
 
 class ReconciliationConfig(BaseModel):
     """Configuration for reconciliation operations."""
 
     enabled: bool = True
-    delta_share_config: Optional[DeltaShareConfig] = None
-    source_catalog: Optional[str] = 'aaron_azure_shared'
-    recon_outputs_catalog: Optional[str] = 'aaron_azure_shared_recon_results'
+    # delta_share_config: Optional[DeltaShareConfig] = None
+    source_catalog: Optional[str] = None
+    recon_outputs_catalog: Optional[str] = None
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
@@ -174,7 +143,7 @@ class TargetCatalogConfig(BaseModel):
     catalog_name: str
     schema_filter_expression: Optional[str] = None
     backup_config: Optional[BackupConfig] = None
-    delta_share_config: Optional[DeltaShareConfig] = None
+    # delta_share_config: Optional[DeltaShareConfig] = None
     replication_config: Optional[ReplicationConfig] = None
     reconciliation_config: Optional[ReconciliationConfig] = None
     target_schemas: Optional[List[SchemaConfig]] = None
@@ -267,6 +236,32 @@ class ReplicationSystemConfig(BaseModel):
         if not v:
             raise ValueError("At least one target catalog must be configured")
         return v
+
+    @model_validator(mode="after")
+    def derive_default_catalogs(self):
+        """
+        Derive default catalogs when not provided in the config.
+        - Backup catalogs: __replication_internal_{catalog_name}_to_{target_databricks_connect_config.name}
+        - Replication source catalogs: __replication_internal_{catalog_name}_from_{source_databricks_connect_config.name}
+        """
+        target_name = self.target_databricks_connect_config.name
+        source_name = self.source_databricks_connect_config.name
+
+        for catalog in self.target_catalogs:
+            # Derive default backup catalogs
+            if catalog.backup_config and catalog.backup_config.enabled:
+                if catalog.backup_config.backup_catalog is None:
+                    default_backup_catalog = f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
+                    catalog.backup_config.backup_catalog = default_backup_catalog
+
+            # Derive default replication source catalogs
+            if catalog.replication_config and catalog.replication_config.enabled:
+                if catalog.replication_config.source_catalog is None:
+                    default_source_catalog = f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
+                    catalog.replication_config.source_catalog = default_source_catalog
+
+        return self
+
 
 class AuditLogEntry(BaseModel):
     """Model for audit log entries."""

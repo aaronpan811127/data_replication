@@ -6,8 +6,9 @@ This module provides the primary CLI interface for all replication operations
 including backup, delta share, replication, and reconciliation.
 """
 
-import argparse
 import sys
+import os
+import argparse
 from pathlib import Path
 import uuid
 from databricks.sdk import WorkspaceClient
@@ -16,6 +17,24 @@ from data_replication.audit.logger import DataReplicationLogger
 from data_replication.config.loader import ConfigLoader
 from data_replication.exceptions import ConfigurationError
 from data_replication.providers.provider_factory import ProviderFactory
+
+# Determine the parent directory of the current script for module imports
+pwd = ""
+try:
+    pwd = (
+        dbutils.notebook.entry_point.getDbutils()
+        .notebook()
+        .getContext()
+        .notebookPath()
+        .get()
+    )  # type: ignore  # noqa: E501
+    parent_folder = os.path.dirname(os.path.dirname(pwd))
+except NameError:
+    # Fallback when running outside Databricks (e.g. local development or tests)
+    parent_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Append the framework path to the system path for module resolution
+if parent_folder not in sys.path:
+    sys.path.append(parent_folder)
 
 
 def create_logger(config) -> DataReplicationLogger:

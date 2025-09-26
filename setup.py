@@ -14,10 +14,12 @@ local_version = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d.%H
 
 setup(
     name="data_replication",
-    version="1.0.0" + "+" + local_version,
+    version="1.0.0" + "+" + "test",
     url="https://databricks.com",
     description="Data replication system for Databricks tables",
-    long_description=Path("./src/data_replication/README.md").read_text(encoding="utf-8"),
+    long_description=Path("./src/data_replication/README.md").read_text(
+        encoding="utf-8"
+    ),
     long_description_content_type="text/markdown",
     packages=find_packages(where="./src"),
     package_dir={"": "src/"},
@@ -37,6 +39,8 @@ setup(
         "structlog>=22.0.0",
         "typer>=0.9.0",
         "rich>=13.0.0",
+        "setuptools",
+        "wheel"
     ],
     extras_require={
         "dev": [
@@ -57,15 +61,15 @@ setup(
         ],
     },
     python_requires=">=3.8",
-    classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
-        "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-    ],
+    # classifiers=[
+    #     "Development Status :: 4 - Beta",
+    #     "Intended Audience :: Developers",
+    #     "License :: OSI Approved :: Apache Software License",
+    #     "Operating System :: OS Independent",
+    #     "Programming Language :: Python :: 3",
+    #     "Programming Language :: Python :: 3.8",
+    #     "Programming Language :: Python :: 3.9",
+    #     "Programming Language :: Python :: 3.10",
+    #     "Programming Language :: Python :: 3.11",
+    # ],
 )
