@@ -11,10 +11,10 @@ import sys
 from pathlib import Path
 
 from databricks.connect import DatabricksSession
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.backup.backup_manager import BackupManager
-from data_replication.config.loader import ConfigLoader
-from data_replication.core.exceptions import ConfigurationError
+from ..audit.logger import DataReplicationLogger
+from ..config.loader import ConfigLoader
+from ..exceptions import ConfigurationError
+from ..providers.provider_factory import ProviderFactory
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -27,7 +27,7 @@ def create_logger(config) -> DataReplicationLogger:
 
 def create_spark_session() -> DatabricksSession:
     """Create Databricks Spark session."""
-    return DatabricksSession.builder.serverless(True).getOrCreate()
+    return DatabricksSession.builder.serverless(True).getOrCreate()  # type: ignore
 
 
 def validate_backup_configuration(config) -> bool:
@@ -80,10 +80,12 @@ def run_backup_command(
         logger.info(f"Found {len(backup_catalogs)} catalogs configured for backup")
 
         for catalog in backup_catalogs:
-            logger.info(
-                f"  - {catalog.catalog_name}: "
-                f"{catalog.backup_config.source_catalog} -> {catalog.backup_config.backup_catalog}"
-            )
+            if catalog.backup_config:  # Safe check since we already filtered for enabled configs
+                logger.info(
+                    f"  - {catalog.catalog_name}: "
+                    f"{catalog.backup_config.source_catalog} -> "
+                    f"{catalog.backup_config.backup_catalog}"
+                )
 
         if validate_only:
             logger.info("Configuration validation completed successfully")
@@ -96,10 +98,10 @@ def run_backup_command(
         # Create Spark sessions
         spark = create_spark_session()
         logging_spark = create_spark_session()
-        
+
         # Run backup operations
-        backup_manager = BackupManager(config, spark, logging_spark, logger)
-        summary = backup_manager.run_backup_operations()
+        backup_factory = ProviderFactory("backup", config, spark, logging_spark, logger)
+        summary = backup_factory.run_backup_operations()
 
         # Log results
         if summary.failed_operations > 0:
@@ -108,12 +110,12 @@ def run_backup_command(
                 f"{summary.successful_operations + summary.failed_operations} operations"
             )
             return 1
-        else:
-            logger.info(
-                f"All backup operations completed successfully "
-                f"({summary.successful_operations} operations)"
-            )
-            return 0
+        
+        logger.info(
+            f"All backup operations completed successfully "
+            f"({summary.successful_operations} operations)"
+        )
+        return 0
 
     except ConfigurationError as e:
         print(f"Configuration error: {e}", file=sys.stderr)

@@ -5,24 +5,24 @@ This module handles reconciliation operations including schema checks,
 row count validation, and missing data detection between source and target tables.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import List, Tuple, Dict, Any
+from typing import List, Dict, Any
 
 from databricks.connect import DatabricksSession
 
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.config.models import (
+from ..audit.logger import DataReplicationLogger
+from ..config.models import (
     RetryConfig,
     RunResult,
     TableConfig,
     TargetCatalogConfig,
 )
-from data_replication.databricks_operations import DatabricksOperations
-from data_replication.utils import retry_with_logging
+from .base_provider import BaseProvider
+from ..databricks_operations import DatabricksOperations
+from ..utils import retry_with_logging
 
 
-class ReconciliationProvider:
+class ReconciliationProvider(BaseProvider):
     """Provider for reconciliation operations between source and target tables."""
 
     def __init__(
@@ -49,14 +49,28 @@ class ReconciliationProvider:
             max_workers: Maximum number of concurrent workers
             timeout_seconds: Timeout for operations
         """
-        self.spark = spark
-        self.logger = logger
-        self.db_ops = db_ops
-        self.run_id = run_id
-        self.catalog_config = catalog_config
-        self.retry = retry if retry else RetryConfig(max_attempts=1, delay_seconds=5)
-        self.max_workers = max_workers
-        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            spark, logger, db_ops, run_id, catalog_config, retry, max_workers, timeout_seconds
+        )
+
+    def get_operation_name(self) -> str:
+        """Get the name of the operation for logging purposes."""
+        return "reconciliation"
+
+    def is_operation_enabled(self) -> bool:
+        """Check if the reconciliation operation is enabled in the configuration."""
+        return (
+            self.catalog_config.reconciliation_config
+            and self.catalog_config.reconciliation_config.enabled
+        )
+
+    def process_catalog(self) -> List[RunResult]:
+        """Process all tables in a catalog for reconciliation operations."""
+        return self.reconcile_catalog()
+
+    def process_table(self, schema_name: str, table_name: str) -> RunResult:
+        """Process a single table for reconciliation."""
+        return self._reconcile_table(schema_name, table_name)
 
     def reconcile_catalog(self) -> List[RunResult]:
         """
@@ -65,10 +79,7 @@ class ReconciliationProvider:
         Returns:
             List of RunResult objects for each reconciliation operation
         """
-        if (
-            not self.catalog_config.reconciliation_config
-            or not self.catalog_config.reconciliation_config.enabled
-        ):
+        if not self.is_operation_enabled():
             self.logger.info(
                 f"Reconciliation is disabled for catalog: {self.catalog_config.catalog_name}"
             )
@@ -93,119 +104,31 @@ class ReconciliationProvider:
             schema_list = self._get_schemas()
 
             for schema_name, table_list in schema_list:
-                schema_results = self._reconcile_schema(schema_name, table_list)
+                schema_results = self.process_schema_concurrently(schema_name, table_list)
                 results.extend(schema_results)
 
         except Exception as e:
             error_msg = f"Failed to reconcile catalog {self.catalog_config.catalog_name}: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            result = RunResult(
-                operation_type="reconciliation",
-                catalog_name=self.catalog_config.catalog_name,
-                status="failed",
-                start_time=start_time.isoformat(),
-                end_time=datetime.now(timezone.utc).isoformat(),
-                error_message=error_msg,
+            result = self._create_failed_result(
+                self.catalog_config.catalog_name, "", None, error_msg, start_time
             )
             results.append(result)
 
         return results
 
-    def _reconcile_schema(
-        self, schema_name: str, table_list: List[TableConfig]
+    def process_schema_concurrently(
+        self, schema_name: str, table_list: List
     ) -> List[RunResult]:
-        """
-        Reconcile all tables in a schema concurrently.
-
-        Args:
-            schema_name: Schema name to reconcile
-            table_list: List of table configurations to reconcile
-
-        Returns:
-            List of RunResult objects for each table reconciliation
-        """
-        results = []
+        """Override to add reconciliation-specific schema setup."""
         reconciliation_config = self.catalog_config.reconciliation_config
-        target_catalog = self.catalog_config.catalog_name
-        start_time = datetime.now(timezone.utc)
 
-        try:
-            # Ensure reconciliation schema exists in output catalog
-            self.db_ops.create_schema_if_not_exists(
-                reconciliation_config.recon_outputs_catalog, schema_name
-            )
+        # Ensure reconciliation schema exists in output catalog before processing
+        self.db_ops.create_schema_if_not_exists(
+            reconciliation_config.recon_outputs_catalog, schema_name
+        )
 
-            # Get all tables in the schema
-            tables = self._get_tables(target_catalog, schema_name, table_list)
-
-            if not tables:
-                self.logger.info(
-                    f"No tables found in schema {target_catalog}.{schema_name}"
-                )
-                return results
-
-            self.logger.info(
-                f"Starting concurrent reconciliation of {len(tables)} tables in schema {target_catalog}.{schema_name} using {self.max_workers} workers"
-            )
-
-            # Process tables concurrently within the schema
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Submit reconciliation jobs for all tables in the schema
-                future_to_table = {
-                    executor.submit(
-                        self._reconcile_table, schema_name, table_name
-                    ): table_name
-                    for table_name in tables
-                }
-
-                # Collect results
-                for future in as_completed(future_to_table):
-                    table_name = future_to_table[future]
-                    try:
-                        result = future.result(timeout=self.timeout_seconds)
-                        results.append(result)
-
-                        if result.status == "success":
-                            self.logger.info(
-                                f"Successfully reconciled table {target_catalog}.{schema_name}.{table_name}"
-                            )
-                        else:
-                            self.logger.error(
-                                f"Failed to reconcile table {target_catalog}.{schema_name}.{table_name}: {result.error_message}"
-                            )
-
-                    except Exception as e:
-                        error_msg = f"Failed to reconcile table {target_catalog}.{schema_name}.{table_name}: {str(e)}"
-                        self.logger.error(error_msg, exc_info=True)
-                        result = RunResult(
-                            operation_type="reconciliation",
-                            catalog_name=target_catalog,
-                            schema_name=schema_name,
-                            table_name=table_name,
-                            status="failed",
-                            start_time=start_time.isoformat(),
-                            end_time=datetime.now(timezone.utc).isoformat(),
-                            error_message=error_msg,
-                        )
-                        results.append(result)
-
-        except Exception as e:
-            error_msg = (
-                f"Failed to reconcile schema {target_catalog}.{schema_name}: {str(e)}"
-            )
-            self.logger.error(error_msg, exc_info=True)
-            result = RunResult(
-                operation_type="reconciliation",
-                catalog_name=target_catalog,
-                schema_name=schema_name,
-                status="failed",
-                start_time=start_time.isoformat(),
-                end_time=datetime.now(timezone.utc).isoformat(),
-                error_message=error_msg,
-            )
-            results.append(result)
-
-        return results
+        return super().process_schema_concurrently(schema_name, table_list)
 
     def _reconcile_table(
         self,
@@ -292,7 +215,8 @@ class ReconciliationProvider:
 
             if not failed_checks:
                 self.logger.info(
-                    f"Reconciliation passed all checks: {source_table} vs {target_table} ({duration:.2f}s)",
+                    f"Reconciliation passed all checks: {source_table} vs {target_table} "
+                    f"({duration:.2f}s)",
                     extra={"run_id": self.run_id, "operation": "reconciliation"},
                 )
 
@@ -641,64 +565,3 @@ class ReconciliationProvider:
                 "error": f"Missing data check failed: {str(e)}",
                 "output_table": missing_data_table,
             }
-
-    def _get_schemas(
-        self, catalog_name: str = None
-    ) -> List[Tuple[str, List[TableConfig]]]:
-        """
-        Get list of schemas to replicate based on configuration.
-
-        Returns:
-            List of schema names and table list to replicate
-        """
-
-        if catalog_name:
-            # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(catalog_name)
-            return [[item, []] for item in schema_list]
-
-        if self.catalog_config.target_schemas:
-            # Use explicitly configured schemas
-            return [
-                (
-                    schema.schema_name,
-                    [
-                        item
-                        for item in (schema.tables or [])
-                        if item not in (schema.exclude_tables or [])
-                    ],
-                )
-                for schema in self.catalog_config.target_schemas
-            ]
-
-        if self.catalog_config.schema_filter_expression:
-            # Use schema filter expression
-            schema_list = self.db_ops.get_schemas_by_filter(
-                self.catalog_config.catalog_name,
-                self.catalog_config.schema_filter_expression,
-            )
-        else:
-            # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
-
-        return [[item, []] for item in schema_list]
-
-    def _get_tables(
-        self, catalog_name: str, schema_name: str, table_list: List[TableConfig]
-    ) -> List[str]:
-        """
-        Get list of tables to replicate in a schema based on configuration.
-
-        Args:
-            catalog_name: Name of the catalog
-            schema_name: Name of the schema
-            table_list: List of table configurations to replicate in the schema
-        Returns:
-            List of table names to replicate
-        """
-        if table_list:
-            # Use explicitly configured tables
-            return [item.table_name for item in table_list]
-
-        # Replicate all tables in the schema
-        return self.db_ops.get_tables_in_schema(catalog_name, schema_name)

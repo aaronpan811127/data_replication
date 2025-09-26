@@ -49,7 +49,7 @@ class DatabricksOperations:
 
     def get_tables_in_schema(self, catalog_name: str, schema_name: str) -> List[str]:
         """
-        Get all tables in a schema.
+        Get all tables in a schema, including STREAMING_TABLE and MANAGED table types.
 
         Args:
             catalog_name: Name of the catalog
@@ -58,15 +58,52 @@ class DatabricksOperations:
         Returns:
             List of table names
         """
-        full_schema = f"{catalog_name}.{schema_name}"
         try:
-            tables_df = self.spark.sql(f"SHOW TABLES IN {full_schema}").filter(
+            full_schema = f"{catalog_name}.{schema_name}"
+            
+            # Get visible tables using SHOW TABLES (excludes internal tables)
+            show_tables_df = self.spark.sql(f"SHOW TABLES IN {full_schema}").filter(
                 "isTemporary == false"
             )
-            return [row.tableName for row in tables_df.collect()]
+            return [row.tableName for row in show_tables_df.collect()]
+                
         except Exception:
             # Schema might not exist or be accessible
             return []
+
+    def filter_tables_by_type(
+        self, catalog_name: str, schema_name: str, table_names: List[str]
+    ) -> List[str]:
+        """
+        Filter a list of table names to only include STREAMING_TABLE and MANAGED types.
+
+        Args:
+            catalog_name: Name of the catalog
+            schema_name: Name of the schema
+            table_names: List of table names to filter
+
+        Returns:
+            List of table names that are STREAMING_TABLE or MANAGED
+        """
+        if not table_names:
+            return []
+
+        try:
+            table_names_list = "', '".join(table_names)
+            info_schema_query = f"""
+                SELECT table_name 
+                FROM {catalog_name}.information_schema.tables 
+                WHERE table_schema = '{schema_name}'
+                  AND table_name IN ('{table_names_list}')
+                  AND table_type IN ('STREAMING_TABLE', 'MANAGED')
+            """
+            
+            tables_df = self.spark.sql(info_schema_query)
+            return [row.table_name for row in tables_df.collect()]
+            
+        except Exception:
+            # If filtering fails, return all provided tables
+            return table_names
 
     def get_all_schemas(self, catalog_name: str) -> List[str]:
         """

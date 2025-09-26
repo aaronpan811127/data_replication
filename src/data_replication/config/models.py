@@ -18,6 +18,13 @@ class TableType(str, Enum):
     DELTA_LIVE_TABLE = "delta_live_table"
 
 
+class ExecuteAt(str, Enum):
+    """Enumeration of execution locations for operations."""
+
+    SOURCE = "source"
+    TARGET = "target"
+    EXTERNAL = "external"
+
 class SecretConfig(BaseModel):
     """Configuration for Databricks secrets."""
 
@@ -35,8 +42,8 @@ class DatabricksConnectConfig(BaseModel):
     """Configuration for Databricks Connect."""
 
     name: str
-    host: str
-    token: SecretConfig
+    host: Optional[str]
+    token: Optional[SecretConfig]
 
 
 class TableConfig(BaseModel):
@@ -243,6 +250,7 @@ class ReplicationSystemConfig(BaseModel):
     concurrency: Optional[ConcurrencyConfig] = Field(default_factory=ConcurrencyConfig)
     retry: Optional[RetryConfig] = Field(default_factory=RetryConfig)
     logging: Optional[LoggingConfig] = Field(default_factory=LoggingConfig)
+    execute_at: Optional[ExecuteAt] = Field(default=ExecuteAt.TARGET)
 
     @field_validator("version")
     @classmethod

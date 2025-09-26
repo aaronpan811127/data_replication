@@ -13,11 +13,9 @@ import uuid
 from databricks.sdk import WorkspaceClient
 from .utils import create_spark_session
 from .audit.logger import DataReplicationLogger
-from .backup.backup_manager import BackupManager
 from .config.loader import ConfigLoader
-from .core.exceptions import ConfigurationError
-from .replication.replication_manager import ReplicationManager
-from .reconciliation.reconciliation_manager import ReconciliationManager
+from .exceptions import ConfigurationError
+from .providers.provider_factory import ProviderFactory
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -40,8 +38,10 @@ def run_backup_only(
     """Run only backup operations."""
     spark = create_spark_session(source_host, source_token)
     logging_spark = create_spark_session(logging_host, logging_token)
-    backup_manager = BackupManager(config, spark, logging_spark, logger, run_id)
-    summary = backup_manager.run_backup_operations()
+    backup_factory = ProviderFactory(
+        "backup", config, spark, logging_spark, logger, run_id
+    )
+    summary = backup_factory.run_backup_operations()
 
     if summary.failed_operations > 0:
         logger.error(f"Backup completed with {summary.failed_operations} failures")
@@ -57,8 +57,10 @@ def run_replication_only(
     """Run only replication operations."""
     spark = create_spark_session(target_host, target_token)
 
-    replication_manager = ReplicationManager(config, spark, spark, logger, run_id)
-    summary = replication_manager.run_replication_operations()
+    replication_factory = ProviderFactory(
+        "replication", config, spark, spark, logger, run_id
+    )
+    summary = replication_factory.run_replication_operations()
 
     if summary.failed_operations > 0:
         logger.error(f"Replication completed with {summary.failed_operations} failures")
@@ -74,11 +76,15 @@ def run_reconciliation_only(
     """Run only reconciliation operations."""
     spark = create_spark_session(target_host, target_token)
 
-    reconciliation_manager = ReconciliationManager(config, spark, spark, logger, run_id)
-    summary = reconciliation_manager.run_reconciliation_operations()
+    reconciliation_factory = ProviderFactory(
+        "reconciliation", config, spark, spark, logger, run_id
+    )
+    summary = reconciliation_factory.run_reconciliation_operations()
 
     if summary.failed_operations > 0:
-        logger.error(f"Reconciliation completed with {summary.failed_operations} failures")
+        logger.error(
+            f"Reconciliation completed with {summary.failed_operations} failures"
+        )
         return 1
 
     logger.info("All reconciliation operations completed successfully")
@@ -142,20 +148,49 @@ def main():
             # Add dry-run logic here
             return 0
 
+        if config.execute_at == "source" and args.operation not in ["backup"]:
+            logger.error(
+                "When execute_at is 'source', only 'backup' operation is allowed"
+            )
+            return 1
+
+        if config.execute_at == "target" and args.operation in ["backup", "all"]:
+            if (
+                not config.source_databricks_connect_config.host
+                or not config.source_databricks_connect_config.token
+            ):
+                logger.error(
+                    "Source Databricks Connect configuration must be provided for backup operations when execute_at is 'target'"
+                )
+                return 1
+
         run_id = str(uuid.uuid4())
 
         w = WorkspaceClient()
         # Note: In production, tokens should be retrieved from Databricks secrets
-        source_host = config.source_databricks_connect_config.host
-        source_token = w.dbutils.secrets.get(
-            config.source_databricks_connect_config.token.secret_scope,
-            config.source_databricks_connect_config.token.secret_key,
-        )
-        target_host = config.target_databricks_connect_config.host
-        target_token = w.dbutils.secrets.get(
-            config.target_databricks_connect_config.token.secret_scope,
-            config.target_databricks_connect_config.token.secret_key,
-        )
+        source_host = None
+        source_token = None
+        target_host = None
+        target_token = None
+
+        if (
+            config.source_databricks_connect_config.host
+            and config.source_databricks_connect_config.token
+        ):
+            source_host = config.source_databricks_connect_config.host
+            source_token = w.dbutils.secrets.get(
+                config.source_databricks_connect_config.token.secret_scope,
+                config.source_databricks_connect_config.token.secret_key,
+            )
+        if (
+            config.target_databricks_connect_config.host
+            and config.target_databricks_connect_config.token
+        ):
+            target_host = config.target_databricks_connect_config.host
+            target_token = w.dbutils.secrets.get(
+                config.target_databricks_connect_config.token.secret_scope,
+                config.target_databricks_connect_config.token.secret_key,
+            )
         if args.operation in ["all", "backup"]:
             # Check if backup is configured
             backup_catalogs = [
@@ -169,14 +204,20 @@ def main():
                     f"Running backup operations for {len(backup_catalogs)} catalogs"
                 )
 
+                logging_host = target_host
+                logging_token = target_token
+                if config.execute_at == "source":
+                    logging_host = source_host
+                    logging_token = source_token
+
                 result = run_backup_only(
                     config,
                     logger,
                     run_id,
                     source_host,
                     source_token,
-                    target_host,
-                    target_token,
+                    logging_host,
+                    logging_token,
                 )
                 if result != 0:
                     return result

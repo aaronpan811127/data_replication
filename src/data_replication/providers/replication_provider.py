@@ -5,59 +5,39 @@ This module handles replication operations with support for deep clone,
 streaming tables, materialized views, and intermediate catalogs.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List
 
-from databricks.connect import DatabricksSession
 
 # from delta.tables import DeltaTable
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.config.models import (
-    RetryConfig,
+from ..config.models import (
     RunResult,
-    TableConfig,
-    TargetCatalogConfig,
 )
-from data_replication.databricks_operations import DatabricksOperations
-from data_replication.utils import retry_with_logging
+from .base_provider import BaseProvider
+from ..utils import retry_with_logging
 
 
-class ReplicationProvider:
+class ReplicationProvider(BaseProvider):
     """Provider for replication operations using deep clone and insert overwrite."""
 
-    def __init__(
-        self,
-        spark: DatabricksSession,
-        logger: DataReplicationLogger,
-        db_ops: DatabricksOperations,
-        run_id: str,
-        catalog_config: TargetCatalogConfig,
-        retry: RetryConfig = None,
-        max_workers: int = 2,
-        timeout_seconds: int = 1800,
-    ):
-        """
-        Initialize the replication provider.
+    def get_operation_name(self) -> str:
+        """Get the name of the operation for logging purposes."""
+        return "replication"
 
-        Args:
-            spark: Spark session for source databricks workspace
-            logger: Logger instance for audit logging
-            db_ops: Databricks operations helper
-            run_id: Unique run identifier
-            catalog_config: Target catalog configuration containing replication config
-            retry: Retry configuration
-            max_workers: Maximum number of concurrent workers
-            timeout_seconds: Timeout for operations
-        """
-        self.spark = spark
-        self.logger = logger
-        self.db_ops = db_ops
-        self.run_id = run_id
-        self.catalog_config = catalog_config
-        self.retry = retry if retry else RetryConfig(max_attempts=1, delay_seconds=5)
-        self.max_workers = max_workers
-        self.timeout_seconds = timeout_seconds
+    def is_operation_enabled(self) -> bool:
+        """Check if the replication operation is enabled in the configuration."""
+        return (
+            self.catalog_config.replication_config
+            and self.catalog_config.replication_config.enabled
+        )
+
+    def process_catalog(self) -> List[RunResult]:
+        """Process all tables in a catalog for replication operations."""
+        return self.replicate_catalog()
+
+    def process_table(self, schema_name: str, table_name: str) -> RunResult:
+        """Process a single table for replication."""
+        return self._replicate_table(schema_name, table_name)
 
     def replicate_catalog(self) -> List[RunResult]:
         """
@@ -66,10 +46,7 @@ class ReplicationProvider:
         Returns:
             List of RunResult objects for each replication operation
         """
-        if (
-            not self.catalog_config.replication_config
-            or not self.catalog_config.replication_config.enabled
-        ):
+        if not self.is_operation_enabled():
             self.logger.info(
                 f"Replication is disabled for catalog: {self.catalog_config.catalog_name}"
             )
@@ -95,119 +72,34 @@ class ReplicationProvider:
             schema_list = self._get_schemas()
 
             for schema_name, table_list in schema_list:
-                schema_results = self._replicate_schema(schema_name, table_list)
+                schema_results = self.process_schema_concurrently(
+                    schema_name, table_list
+                )
                 results.extend(schema_results)
 
         except Exception as e:
             error_msg = f"Failed to replicate catalog {self.catalog_config.catalog_name}: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            result = RunResult(
-                operation_type="replication",
-                catalog_name=self.catalog_config.catalog_name,
-                status="failed",
-                start_time=start_time.isoformat(),
-                end_time=datetime.now(timezone.utc).isoformat(),
-                error_message=error_msg,
+            result = self._create_failed_result(
+                self.catalog_config.catalog_name, "", None, error_msg, start_time
             )
             results.append(result)
 
         return results
 
-    def _replicate_schema(
-        self, schema_name: str, table_list: List[TableConfig]
+    def process_schema_concurrently(
+        self, schema_name: str, table_list: List
     ) -> List[RunResult]:
-        """
-        Replicate all tables in a schema concurrently.
-
-        Args:
-            schema_name: Schema name to replicate
-            table_list: List of table configurations to replicate
-
-        Returns:
-            List of RunResult objects for each table replication
-        """
-        results = []
+        """Override to add replication-specific schema setup."""
         replication_config = self.catalog_config.replication_config
-        catalog_name = self.catalog_config.catalog_name
-        intermediate_catalog = replication_config.intermediate_catalog
-        start_time = datetime.now(timezone.utc)
 
-        try:
-            # Create intermediate schema if needed
-            if intermediate_catalog:
-                self.db_ops.create_schema_if_not_exists(
-                    intermediate_catalog, schema_name
-                )
-
-            # Get all tables in the schema
-            tables = self._get_tables(catalog_name, schema_name, table_list)
-
-            if not tables:
-                self.logger.info(
-                    f"No tables found in schema {catalog_name}.{schema_name}"
-                )
-                return results
-
-            self.logger.info(
-                f"Starting concurrent replication of {len(tables)} tables in schema {catalog_name}.{schema_name} using {self.max_workers} workers"
+        # Create intermediate schema if needed
+        if replication_config.intermediate_catalog:
+            self.db_ops.create_schema_if_not_exists(
+                replication_config.intermediate_catalog, schema_name
             )
 
-            # Process tables concurrently within the schema
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Submit replication jobs for all tables in the schema
-                future_to_table = {
-                    executor.submit(
-                        self._replicate_table, schema_name, table_name
-                    ): table_name
-                    for table_name in tables
-                }
-
-                # Collect results
-                for future in as_completed(future_to_table):
-                    table_name = future_to_table[future]
-                    try:
-                        result = future.result(timeout=self.timeout_seconds)
-                        results.append(result)
-
-                        if result.status == "success":
-                            self.logger.info(
-                                f"Successfully replicated table {catalog_name}.{schema_name}.{table_name}"
-                            )
-                        else:
-                            self.logger.error(
-                                f"Failed to replicate table {catalog_name}.{schema_name}.{table_name}: {result.error_message}"
-                            )
-
-                    except Exception as e:
-                        error_msg = f"Failed to replicate table {catalog_name}.{schema_name}.{table_name}: {str(e)}"
-                        self.logger.error(error_msg, exc_info=True)
-                        result = RunResult(
-                            operation_type="replication",
-                            catalog_name=catalog_name,
-                            schema_name=schema_name,
-                            table_name=table_name,
-                            status="failed",
-                            start_time=start_time.isoformat(),
-                            end_time=datetime.now(timezone.utc).isoformat(),
-                            error_message=error_msg,
-                        )
-                        results.append(result)
-
-        except Exception as e:
-            error_msg = f"Failed to replicate schema {self.catalog_config.catalog_name}.{schema_name}: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            result = RunResult(
-                operation_type="replication",
-                catalog_name=catalog_name,
-                schema_name=schema_name,
-                status="failed",
-                start_time=start_time.isoformat(),
-                end_time=datetime.now(timezone.utc).isoformat(),
-                error_message=error_msg,
-            )
-            results.append(result)
-
-        return results
+        return super().process_schema_concurrently(schema_name, table_list)
 
     def _replicate_table(
         self,
@@ -250,7 +142,8 @@ class ReplicationProvider:
                 source_table
             ) != self.db_ops.get_table_fields(actual_target_table):
                 raise Exception(
-                    f"Schema mismatch between intermediate table {source_table} and target table {target_table}"
+                    f"Schema mismatch between intermediate table {source_table} "
+                    f"and target table {target_table}"
                 )
 
             # Use custom retry decorator with logging
@@ -319,7 +212,8 @@ class ReplicationProvider:
 
             if result:
                 self.logger.info(
-                    f"Replication completed successfully: {source_table} -> {target_table} ({duration:.2f}s)",
+                    f"Replication completed successfully: {source_table} -> {target_table} "
+                    f"({duration:.2f}s)",
                     extra={"run_id": self.run_id, "operation": "replication"},
                 )
 
@@ -343,7 +237,10 @@ class ReplicationProvider:
                     max_attempts=max_attempts,
                 )
 
-            error_msg = f"Replication failed after {max_attempts} attempts: {source_table} -> {target_table}"
+            error_msg = (
+                f"Replication failed after {max_attempts} attempts: "
+                f"{source_table} -> {target_table}"
+            )
             if last_exception:
                 error_msg += f" | Last error: {str(last_exception)}"
 
@@ -495,64 +392,3 @@ class ReplicationProvider:
         else:
             # For regular tables, just return the deep clone query
             return sql
-
-    def _get_schemas(
-        self, catalog_name: str = None
-    ) -> List[Tuple[str, List[TableConfig]]]:
-        """
-        Get list of schemas to replicate based on configuration.
-
-        Returns:
-            List of schema names and table list to replicate
-        """
-
-        if catalog_name:
-            # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(catalog_name)
-            return [[item, []] for item in schema_list]
-
-        if self.catalog_config.target_schemas:
-            # Use explicitly configured schemas
-            return [
-                (
-                    schema.schema_name,
-                    [
-                        item
-                        for item in (schema.tables or [])
-                        if item not in (schema.exclude_tables or [])
-                    ],
-                )
-                for schema in self.catalog_config.target_schemas
-            ]
-
-        if self.catalog_config.schema_filter_expression:
-            # Use schema filter expression
-            schema_list = self.db_ops.get_schemas_by_filter(
-                self.catalog_config.catalog_name,
-                self.catalog_config.schema_filter_expression,
-            )
-        else:
-            # Replicate all schemas
-            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
-
-        return [[item, []] for item in schema_list]
-
-    def _get_tables(
-        self, catalog_name: str, schema_name: str, table_list: List[TableConfig]
-    ) -> List[str]:
-        """
-        Get list of tables to replicate in a schema based on configuration.
-
-        Args:
-            catalog_name: Name of the catalog
-            schema_name: Name of the schema
-            table_list: List of table configurations to replicate in the schema
-        Returns:
-            List of table names to replicate
-        """
-        if table_list:
-            # Use explicitly configured tables
-            return [item.table_name for item in table_list]
-
-        # Replicate all tables in the schema
-        return self.db_ops.get_tables_in_schema(catalog_name, schema_name)

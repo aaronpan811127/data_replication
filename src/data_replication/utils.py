@@ -11,15 +11,15 @@ from functools import wraps
 from typing import Optional
 
 from databricks.connect import DatabricksSession
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.config.models import RetryConfig
+from .audit.logger import DataReplicationLogger
+from .config.models import RetryConfig
 
 
 def create_spark_session(host, token) -> DatabricksSession:
     """Create a Databricks Spark session using the provided host and token."""
-    # Note: In production, tokens should be retrieved from Databricks secrets
-    os.environ["DATABRICKS_HOST"] = host
-    os.environ["DATABRICKS_TOKEN"] = token
+    if not host and not token:
+        os.environ["DATABRICKS_HOST"] = host
+        os.environ["DATABRICKS_TOKEN"] = token
     # Create Databricks session with serverless compute
     spark = DatabricksSession.builder.serverless(True).getOrCreate()
 
@@ -73,8 +73,8 @@ def retry_with_logging(
                         time.sleep(current_delay)
                         current_delay *= 2.0  # Exponential backoff
                         logger.info(
-                                f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}"
-                            )
+                            f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}"
+                        )
                     else:
                         logger.error(
                             f"{func.__name__} failed after {retry_config.max_attempts} attempts"
