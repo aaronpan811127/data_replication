@@ -112,8 +112,8 @@ class ReconciliationConfig(BaseModel):
 
     enabled: bool = True
     # delta_share_config: Optional[DeltaShareConfig] = None
-    source_catalog: Optional[str] = None
-    recon_outputs_catalog: Optional[str] = None
+    source_catalog: str
+    recon_outputs_catalog: str
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
@@ -123,6 +123,7 @@ class ReconciliationConfig(BaseModel):
         """Validate required fields when reconciliation is enabled."""
         if self.enabled:
             required_fields = [
+                "source_catalog",
                 "recon_outputs_catalog",
             ]
             missing_fields = [

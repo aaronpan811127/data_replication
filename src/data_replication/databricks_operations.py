@@ -60,13 +60,13 @@ class DatabricksOperations:
         """
         try:
             full_schema = f"{catalog_name}.{schema_name}"
-            
+
             # Get visible tables using SHOW TABLES (excludes internal tables)
             show_tables_df = self.spark.sql(f"SHOW TABLES IN {full_schema}").filter(
                 "isTemporary == false"
             )
             return [row.tableName for row in show_tables_df.collect()]
-                
+
         except Exception:
             # Schema might not exist or be accessible
             return []
@@ -85,22 +85,24 @@ class DatabricksOperations:
         Returns:
             List of table names that are STREAMING_TABLE or MANAGED
         """
-        if not table_names:
-            return []
 
         try:
-            table_names_list = "', '".join(table_names)
+            table_names_values = ", ".join([f"('{name}')" for name in table_names])
             info_schema_query = f"""
-                SELECT table_name 
-                FROM {catalog_name}.information_schema.tables 
+                SELECT filter_tables.table_name 
+                FROM (VALUES {table_names_values}) AS filter_tables(table_name)
+                LEFT OUTER JOIN (
+                SELECT * FROM {catalog_name}.information_schema.tables
                 WHERE table_schema = '{schema_name}'
-                  AND table_name IN ('{table_names_list}')
-                  AND table_type IN ('STREAMING_TABLE', 'MANAGED')
+                ) AS t
+                ON t.table_name = filter_tables.table_name
+                WHERE t.table_type IS NULL
+                  OR t.table_type IN ('STREAMING_TABLE', 'MANAGED')
             """
-            
+
             tables_df = self.spark.sql(info_schema_query)
             return [row.table_name for row in tables_df.collect()]
-            
+
         except Exception:
             # If filtering fails, return all provided tables
             return table_names
@@ -162,6 +164,12 @@ class DatabricksOperations:
             Dictionary containing table details
         """
         try:
+            details = (
+                self.spark.sql(f"DESCRIBE DETAIL {table_name}").collect()[0].asDict()
+            )
+            return details
+
+        except Exception:
             details_str = (
                 self.spark.sql(f"DESCRIBE EXTENDED {table_name}")
                 .filter(col("col_name") == "Table Properties")
@@ -174,11 +182,6 @@ class DatabricksOperations:
                 item.split("=") for item in result_clean.split(",") if "=" in item
             )
             return {"properties": properties}
-        except Exception:
-            details = (
-                self.spark.sql(f"DESCRIBE DETAIL {table_name}").collect()[0].asDict()
-            )
-            return details
 
     def table_exists(self, table_name: str) -> bool:
         """

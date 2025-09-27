@@ -60,7 +60,7 @@ def run_backup_only(
     backup_factory = ProviderFactory(
         "backup", config, spark, logging_spark, logger, run_id
     )
-    logger.info(f"Starting backup operations in {config.execute_at.value} environment")
+    logger.info(f"Backup operations in {config.execute_at.value} environment")
     summary = backup_factory.run_backup_operations()
 
     if summary.failed_operations > 0:
@@ -81,7 +81,7 @@ def run_replication_only(
         "replication", config, spark, spark, logger, run_id
     )
     logger.info(
-        f"Starting replication operations in {config.execute_at.value} environment"
+        f"Replication operations in {config.execute_at.value} environment"
     )
     summary = replication_factory.run_replication_operations()
 
@@ -103,7 +103,7 @@ def run_reconciliation_only(
         "reconciliation", config, spark, spark, logger, run_id
     )
     logger.info(
-        f"Starting reconciliation operations in {config.execute_at.value} environment"
+        f"Reconciliation operations in {config.execute_at.value} environment"
     )
     summary = reconciliation_factory.run_reconciliation_operations()
 
@@ -222,6 +222,8 @@ def main():
             f"Log run_id {run_id} in {config.audit_config.audit_table if config.audit_config and config.audit_config.audit_table else 'No audit table configured'}"
         )
 
+        logger.info(f"All Operations Begins {'-' * 60}")
+
         if args.operation in ["all", "backup"]:
             # Check if backup is configured
             backup_catalogs = [
@@ -230,6 +232,7 @@ def main():
                 if cat.backup_config and cat.backup_config.enabled
             ]
 
+            logger.info(f"Backup Begins {'-' * 60}")
             if backup_catalogs:
                 logger.info(
                     f"Running backup operations for {len(backup_catalogs)} catalogs"
@@ -241,7 +244,7 @@ def main():
                     logging_host = source_host
                     logging_token = source_token
 
-                result = run_backup_only(
+                run_backup_only(
                     config,
                     logger,
                     run_id,
@@ -250,11 +253,9 @@ def main():
                     logging_host,
                     logging_token,
                 )
-                if result != 0:
-                    return result
             elif args.operation == "backup":
-                logger.error("No catalogs configured for backup")
-                return 1
+                logger.info("No catalogs configured for backup")
+            logger.info(f"Backup Ends {'-' * 60}")
 
         # if args.operation in ["all", "delta_share"]:
         #     logger.info("Delta share operations not yet implemented")
@@ -266,20 +267,17 @@ def main():
                 for cat in config.target_catalogs
                 if cat.replication_config and cat.replication_config.enabled
             ]
-
+            logger.info(f"Replication Begins {'-' * 60}")
             if replication_catalogs:
                 logger.info(
                     f"Running replication operations for {len(replication_catalogs)} catalogs"
                 )
 
-                result = run_replication_only(
-                    config, logger, run_id, target_host, target_token
-                )
-                if result != 0:
-                    return result
+                run_replication_only(config, logger, run_id, target_host, target_token)
+
             elif args.operation == "replication":
-                logger.error("No catalogs configured for replication")
-                return 1
+                logger.info("No catalogs configured for replication")
+            logger.info(f"Replication Ends {'-' * 60}")
 
         if args.operation in ["all", "reconciliation"]:
             # Check if reconciliation is configured
@@ -288,31 +286,26 @@ def main():
                 for cat in config.target_catalogs
                 if cat.reconciliation_config and cat.reconciliation_config.enabled
             ]
-
+            logger.info(f"Reconciliation Begins {'-' * 60}")
             if reconciliation_catalogs:
                 logger.info(
                     f"Running reconciliation operations for {len(reconciliation_catalogs)} catalogs"
                 )
 
-                result = run_reconciliation_only(
+                run_reconciliation_only(
                     config, logger, run_id, target_host, target_token
                 )
-                if result != 0:
-                    return result
             elif args.operation == "reconciliation":
-                logger.error("No catalogs configured for reconciliation")
-                return 1
+                logger.info("No catalogs configured for reconciliation")
+            logger.info(f"Reconciliation Ends {'-' * 60}")
 
-        logger.info("All requested operations completed successfully")
-        return 0
+        logger.info(f"All Operations Ends {'-' * 60}")
 
     except ConfigurationError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
-        return 1
     except Exception as e:
         print(f"Operation failed: {e}", file=sys.stderr)
-        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

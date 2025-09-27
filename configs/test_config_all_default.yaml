@@ -33,7 +33,8 @@ target_catalogs:
       recon_outputs_catalog: aaron_azure_shared_recon_results
     target_schemas:
       - schema_name: "bronze_1"
-        # tables:
+        tables:
+          - table_name: "table_3"
         #   # - table_name: "table_1"
         #   # - table_name: "table_2"
         #   # - table_name: "sample_trips_ldp"
@@ -47,8 +48,8 @@ target_catalogs:
         #   # - table_name: "mat_view7"
         #   # - table_name: "mat_view8"
         #   - table_name: "mat_view9"
-        exclude_tables:
-          - table_name: "table_3"
+        # exclude_tables:
+        #   - table_name: "table_3"
 
 concurrency:
   max_workers: 5
