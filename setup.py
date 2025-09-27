@@ -17,7 +17,7 @@ setup(
     version="1.0.0" + "+" + "test",
     url="https://databricks.com",
     description="Data replication system for Databricks tables",
-    long_description=Path("./src/data_replication/README.md").read_text(
+    long_description=Path("README.md").read_text(
         encoding="utf-8"
     ),
     long_description_content_type="text/markdown",
