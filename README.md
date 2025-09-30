@@ -1,22 +1,34 @@
 # Data Replication System for Databricks
 
-A comprehensive data replication system for Databricks with support for backup, delta sharing, replication, and reconciliation of Delta Live Tables (DLT) and regular Delta tables across different workspaces and catalogs.
+A comprehensive data replication system for Databricks with support for backup, replication, and reconciliation of Delta Live Tables (DLT) and regular Delta tables across different cloud and metastores.
 
 ## Overview
 
-This system provides automated data replication capabilities between Databricks workspaces, with specialized handling for Delta Live Tables (DLT). It supports multiple operation types that can be run independently or together:
+This system provides incremental data replication capabilities between Databricks metastores, with specialized handling for Delta Live Tables (DLT). It supports multiple operation types that can be run independently or together:
 
 - **Backup**: Deep clone operations from DLT internal tables to backup catalogs
-- **Replication**: Cross-workspace table replication with schema enforcement
+- **Replication**: Cross-metastore incremental table replication with schema enforcement
 - **Reconciliation**: Data validation with row counts, schema checks, and missing data detection
-- **Delta Share**: Sharing data across workspaces using Databricks Delta Sharing
+
+## Supported Object Types
+- Streaming Tables (data only, not checkpoints)
+- Managed Table
+
+## Unsupported Object Types
+- External Table
+- Materialized Views
+- SQL Views
+- Checkpointing for streaming tables
 
 ## Key Features
+
+### Incremental Data Refresh
+The system leverages Deep Clone for incrementality
 
 ### DLT Table Handling
 The system automatically handles Delta Live Tables complexities:
 - Extracts pipeline IDs using `DESCRIBE DETAIL` on DLT tables
-- Constructs internal table paths: `__dlt_materialization_schema_<pipeline_id>` and `__materialization_mat_<pipeline_id>_<table_name>_1`
+- Constructs internal table path using pipeline ID
 - Performs operations on internal tables rather than DLT tables directly
 
 ### Robust Error Handling
@@ -34,9 +46,13 @@ The system automatically handles Delta Live Tables complexities:
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
 - Access to Databricks workspaces
 - Appropriate permissions for table operations and secret access
+- Cloud Token based D2D Delta Sharing Enabled
+- DLT Streaming tables already exist in target
+- Delta Sharing shares and catalog created with all schemas added for replication - to be automated in future
+- Source and target SP PAT and Databricks secrets created if executed outside Databricks
+
 
 ### Setup
 
@@ -224,22 +240,6 @@ pytest -m slow      # Slow running tests
 # Run tests with detailed coverage report
 pytest --cov=data_replication --cov-report=html --cov-report=term-missing
 ```
-
-## Key Dependencies
-
-### Runtime Dependencies
-- **databricks-connect**: Primary Databricks connectivity
-- **databricks-sdk**: Databricks REST API operations
-- **pydantic**: Configuration validation
-- **typer/click**: CLI framework
-- **tenacity**: Retry logic
-- **structlog**: Structured logging
-- **pyyaml**: Configuration file parsing
-
-### Development Dependencies
-- **pytest**: Testing framework with coverage and mock plugins
-- **black/isort/flake8/mypy**: Code quality tools
-- **pre-commit**: Git hooks for code quality
 
 ## Security Considerations
 

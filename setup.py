@@ -31,22 +31,13 @@ setup(
     install_requires=[
         "databricks-connect==17.1.*",
         "pydantic>=2.0.0",
-        "pyyaml>=6.0",
-        "click>=8.0.0",
         "databricks-sdk>=0.8.0",
-        "requests>=2.28.0",
-        "tenacity>=8.0.0",
-        "structlog>=22.0.0",
-        "typer>=0.9.0",
-        "rich>=13.0.0",
         "setuptools",
         "wheel"
     ],
     extras_require={
         "dev": [
             "pytest>=7.0.0",
-            "pytest-mock>=3.10.0",
-            "pytest-asyncio>=0.21.0",
             "black>=23.0.0",
             "isort>=5.12.0",
             "flake8>=6.0.0",
@@ -55,21 +46,8 @@ setup(
         ],
         "test": [
             "pytest>=7.0.0",
-            "pytest-mock>=3.10.0",
-            "pytest-asyncio>=0.21.0",
             "coverage>=7.0.0",
         ],
     },
-    python_requires=">=3.8",
-    # classifiers=[
-    #     "Development Status :: 4 - Beta",
-    #     "Intended Audience :: Developers",
-    #     "License :: OSI Approved :: Apache Software License",
-    #     "Operating System :: OS Independent",
-    #     "Programming Language :: Python :: 3",
-    #     "Programming Language :: Python :: 3.8",
-    #     "Programming Language :: Python :: 3.9",
-    #     "Programming Language :: Python :: 3.10",
-    #     "Programming Language :: Python :: 3.11",
-    # ],
+    python_requires=">=3.8"
 )

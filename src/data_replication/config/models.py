@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class TableType(str, Enum):
     """Enumeration of supported table types."""
 
-    DELTA = "delta"
+    m = "delta"
     DELTA_LIVE_TABLE = "delta_live_table"
 
 
