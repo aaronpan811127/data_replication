@@ -75,12 +75,14 @@ class ReconciliationProvider(BaseProvider):
         """Process a single table for reconciliation."""
         return self._reconcile_table(schema_name, table_name)
 
-    def setup_operation_catalogs(self):
+    def setup_operation_catalogs(self) -> str:
         """Setup reconciliation-specific catalogs."""
         reconciliation_config = self.catalog_config.reconciliation_config
         self.db_ops.create_catalog_if_not_exists(
             reconciliation_config.recon_outputs_catalog
         )
+        self.logger.info(f"Reconciling catalog: {self.catalog_config.catalog_name}")
+        return self.catalog_config.catalog_name
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List

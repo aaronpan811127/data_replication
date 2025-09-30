@@ -10,6 +10,8 @@ from typing import Tuple
 from databricks.connect import DatabricksSession
 from pyspark.sql.functions import col
 
+from data_replication.exceptions import TableNotFoundError
+
 
 class DatabricksOperations:
     """Utility class for Databricks operations."""
@@ -237,8 +239,8 @@ class DatabricksOperations:
 
             # If not a DLT table, just return the original table name and "delta"
             return {"table_name": table_name, "is_dlt": False, "pipeline_id": None}
-
-        raise Exception(f"Table {table_name} does not exist")
+        else:
+            raise TableNotFoundError(f"Table {table_name} does not exist")
 
     def _get_internal_table_name(self, table_name: str, pipeline_id: str) -> str:
         """

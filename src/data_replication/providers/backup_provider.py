@@ -35,10 +35,12 @@ class BackupProvider(BaseProvider):
         """Process a single table for backup."""
         return self._backup_table(schema_name, table_name)
 
-    def setup_operation_catalogs(self):
+    def setup_operation_catalogs(self) -> str:
         """Setup backup-specific catalogs."""
         backup_config = self.catalog_config.backup_config
         self.db_ops.create_catalog_if_not_exists(backup_config.backup_catalog)
+        self.logger.info(f"Cloning catalog: {backup_config.source_catalog}")
+        return backup_config.source_catalog
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List
@@ -70,11 +72,8 @@ class BackupProvider(BaseProvider):
         """
         start_time = datetime.now(timezone.utc)
         backup_config = self.catalog_config.backup_config
-        source_catalog = (
-            backup_config.source_catalog
-            if backup_config.source_catalog
-            else self.catalog_config.catalog_name
-        )
+        source_catalog = backup_config.source_catalog
+
         source_table = f"{source_catalog}.{schema_name}.{table_name}"
         backup_table = f"{backup_config.backup_catalog}.{schema_name}.{table_name}"
 

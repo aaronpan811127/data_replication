@@ -26,11 +26,11 @@ from ..config.models import (
 )
 from ..databricks_operations import DatabricksOperations
 from ..exceptions import (
-    DataReplicationError, 
-    SparkSessionError, 
-    BackupError, 
-    ReplicationError, 
-    ReconciliationError
+    DataReplicationError,
+    SparkSessionError,
+    BackupError,
+    ReplicationError,
+    ReconciliationError,
 )
 
 
@@ -71,6 +71,7 @@ class BaseProvider(ABC):
         )
         self.max_workers = max_workers
         self.timeout_seconds = timeout_seconds
+        self.catalog_name: Optional[str] = None
 
     @abstractmethod
     def setup_operation_catalogs(self):
@@ -106,8 +107,15 @@ class BaseProvider(ABC):
             error_msg = f"Timeout {context} {catalog_name}.{schema_name}.{table_name} after {self.timeout_seconds}s"
             self.logger.error(error_msg)
         elif isinstance(
-            e, (DataReplicationError, SparkSessionError, AnalysisException, 
-                BackupError, ReplicationError, ReconciliationError)
+            e,
+            (
+                DataReplicationError,
+                SparkSessionError,
+                AnalysisException,
+                BackupError,
+                ReplicationError,
+                ReconciliationError,
+            ),
         ):
             error_msg = f"Failed to {context} {catalog_name}.{schema_name}.{table_name}: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
@@ -172,7 +180,7 @@ class BaseProvider(ABC):
 
         try:
             # Setup operation-specific catalogs (implemented by subclasses)
-            self.setup_operation_catalogs()
+            self.catalog_name = self.setup_operation_catalogs()
 
             self.logger.info(
                 f"Starting {self.get_operation_name()} for catalog: {self.catalog_config.catalog_name}",
@@ -218,7 +226,7 @@ class BaseProvider(ABC):
 
         try:
             # Get all tables in the schema
-            tables = self._get_tables(catalog_name, schema_name, table_list)
+            tables = self._get_tables(schema_name, table_list)
 
             if not tables:
                 self.logger.info(
@@ -314,9 +322,7 @@ class BaseProvider(ABC):
             error_message=error_msg,
         )
 
-    def _get_schemas(
-        self, catalog_name: Optional[str] = None
-    ) -> List[Tuple[str, List[TableConfig]]]:
+    def _get_schemas(self) -> List[Tuple[str, List[TableConfig]]]:
         """
         Get list of schemas to process based on configuration.
 
@@ -326,10 +332,6 @@ class BaseProvider(ABC):
         Returns:
             List of tuples containing schema names and table lists to process
         """
-        if catalog_name:
-            # Process all schemas
-            schema_list = self.db_ops.get_all_schemas(catalog_name)
-            return [(item, []) for item in schema_list]
 
         if self.catalog_config.target_schemas:
             # Use explicitly configured schemas
@@ -349,12 +351,12 @@ class BaseProvider(ABC):
             )
         else:
             # Process all schemas
-            schema_list = self.db_ops.get_all_schemas(self.catalog_config.catalog_name)
+            schema_list = self.db_ops.get_all_schemas(self.catalog_name)
 
         return [(item, []) for item in schema_list]
 
     def _get_tables(
-        self, catalog_name: str, schema_name: str, table_list: List[TableConfig]
+        self, schema_name: str, table_list: List[TableConfig]
     ) -> List[str]:
         """
         Get list of tables to process in a schema based on configuration.
@@ -383,10 +385,10 @@ class BaseProvider(ABC):
             tables = [item.table_name for item in table_list]
         else:
             # Process all tables in the schema
-            tables = self.db_ops.get_tables_in_schema(catalog_name, schema_name)
+            tables = self.db_ops.get_tables_in_schema(self.catalog_name, schema_name)
 
         # Apply exclusions first
         tables = [table for table in tables if table not in exclude_names]
 
         # Then filter by table type (STREAMING_TABLE and MANAGED only)
-        return self.db_ops.filter_tables_by_type(catalog_name, schema_name, tables)
+        return self.db_ops.filter_tables_by_type(self.catalog_name, schema_name, tables)

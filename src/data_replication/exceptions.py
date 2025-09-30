@@ -40,3 +40,5 @@ class RetryExhaustedError(DataReplicationError):
 
 class SparkSessionError(DataReplicationError):
     """Raised when Spark session operations fail."""
+class TableNotFoundError(Exception):
+    """Base exception for table not found errors."""

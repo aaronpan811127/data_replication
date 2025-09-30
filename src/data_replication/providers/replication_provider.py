@@ -15,7 +15,7 @@ from ..config.models import (
 )
 from .base_provider import BaseProvider
 from ..utils import retry_with_logging
-from ..exceptions import ReplicationError
+from ..exceptions import ReplicationError, TableNotFoundError
 
 
 class ReplicationProvider(BaseProvider):
@@ -36,13 +36,15 @@ class ReplicationProvider(BaseProvider):
         """Process a single table for replication."""
         return self._replicate_table(schema_name, table_name)
 
-    def setup_operation_catalogs(self):
+    def setup_operation_catalogs(self) -> str:
         """Setup replication-specific catalogs."""
         replication_config = self.catalog_config.replication_config
         if replication_config.intermediate_catalog:
             self.db_ops.create_catalog_if_not_exists(
                 replication_config.intermediate_catalog
             )
+        self.logger.info(f"Cloning catalog: {replication_config.source_catalog}")
+        return replication_config.source_catalog
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List
@@ -86,22 +88,33 @@ class ReplicationProvider(BaseProvider):
         )
 
         try:
-            table_details = self.db_ops.get_table_details(target_table)
-            actual_target_table = table_details["table_name"]
-            dlt_flag = table_details["is_dlt"]
-            pipeline_id = table_details["pipeline_id"]
-
             # Refresh source table delta share metadata
             if not self.spark.catalog.tableExists(source_table):
                 self.spark.catalog.tableExists(source_table)
 
-            if self.db_ops.get_table_fields(
-                source_table
-            ) != self.db_ops.get_table_fields(actual_target_table):
-                raise ReplicationError(
-                    f"Schema mismatch between intermediate table {source_table} "
-                    f"and target table {target_table}"
-                )
+            try:
+                table_details = self.db_ops.get_table_details(target_table)
+                actual_target_table = table_details["table_name"]
+                dlt_flag = table_details["is_dlt"]
+                pipeline_id = table_details["pipeline_id"]
+            except TableNotFoundError as exc:
+                table_details = self.db_ops.get_table_details(source_table)
+                if table_details["is_dlt"]:
+                    raise TableNotFoundError(
+                        f"Target table {target_table} does not exist. Cannot replicate DLT table without existing target."
+                    ) from exc
+                dlt_flag = False
+                pipeline_id = None
+                actual_target_table = target_table
+
+            if self.spark.catalog.tableExists(target_table):
+                if self.db_ops.get_table_fields(
+                    source_table
+                ) != self.db_ops.get_table_fields(actual_target_table):
+                    raise ReplicationError(
+                        f"Schema mismatch between intermediate table {source_table} "
+                        f"and target table {target_table}"
+                    )
 
             # Use custom retry decorator with logging
             @retry_with_logging(self.retry, self.logger)
