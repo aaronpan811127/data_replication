@@ -16,3 +16,6 @@ scratch/**
 *.log
 .env
 .claude/
+.terraform-exporter/
+.terraform-import/
+CLAUDE.md

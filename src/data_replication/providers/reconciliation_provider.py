@@ -14,12 +14,12 @@ from ..audit.logger import DataReplicationLogger
 from ..config.models import (
     RetryConfig,
     RunResult,
-    TableConfig,
     TargetCatalogConfig,
 )
 from .base_provider import BaseProvider
 from ..databricks_operations import DatabricksOperations
 from ..utils import retry_with_logging
+from ..exceptions import ReconciliationError
 
 
 class ReconciliationProvider(BaseProvider):
@@ -50,7 +50,14 @@ class ReconciliationProvider(BaseProvider):
             timeout_seconds: Timeout for operations
         """
         super().__init__(
-            spark, logger, db_ops, run_id, catalog_config, retry, max_workers, timeout_seconds
+            spark,
+            logger,
+            db_ops,
+            run_id,
+            catalog_config,
+            retry,
+            max_workers,
+            timeout_seconds,
         )
 
     def get_operation_name(self) -> str:
@@ -64,58 +71,16 @@ class ReconciliationProvider(BaseProvider):
             and self.catalog_config.reconciliation_config.enabled
         )
 
-    def process_catalog(self) -> List[RunResult]:
-        """Process all tables in a catalog for reconciliation operations."""
-        return self.reconcile_catalog()
-
     def process_table(self, schema_name: str, table_name: str) -> RunResult:
         """Process a single table for reconciliation."""
         return self._reconcile_table(schema_name, table_name)
 
-    def reconcile_catalog(self) -> List[RunResult]:
-        """
-        Reconcile all tables in a catalog based on configuration.
-
-        Returns:
-            List of RunResult objects for each reconciliation operation
-        """
-        if not self.is_operation_enabled():
-            self.logger.info(
-                f"Reconciliation is disabled for catalog: {self.catalog_config.catalog_name}"
-            )
-            return []
-
+    def setup_operation_catalogs(self):
+        """Setup reconciliation-specific catalogs."""
         reconciliation_config = self.catalog_config.reconciliation_config
-        results = []
-        start_time = datetime.now(timezone.utc)
-
-        try:
-            # Ensure reconciliation outputs catalog exists
-            self.db_ops.create_catalog_if_not_exists(
-                reconciliation_config.recon_outputs_catalog
-            )
-
-            self.logger.info(
-                f"Starting reconciliation for catalog: {self.catalog_config.catalog_name}",
-                extra={"run_id": self.run_id, "operation": "reconciliation"},
-            )
-
-            # Get schemas to reconcile
-            schema_list = self._get_schemas()
-
-            for schema_name, table_list in schema_list:
-                schema_results = self.process_schema_concurrently(schema_name, table_list)
-                results.extend(schema_results)
-
-        except Exception as e:
-            error_msg = f"Failed to reconcile catalog {self.catalog_config.catalog_name}: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            result = self._create_failed_result(
-                self.catalog_config.catalog_name, "", None, error_msg, start_time
-            )
-            results.append(result)
-
-        return results
+        self.db_ops.create_catalog_if_not_exists(
+            reconciliation_config.recon_outputs_catalog
+        )
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List
@@ -264,8 +229,12 @@ class ReconciliationProvider(BaseProvider):
         except Exception as e:
             end_time = datetime.now(timezone.utc)
             duration = (end_time - start_time).total_seconds()
-            error_msg = f"Failed to reconcile table {source_table}: {str(e)}"
 
+            # Wrap in ReconciliationError for better error categorization
+            if not isinstance(e, ReconciliationError):
+                e = ReconciliationError(f"Reconciliation operation failed: {str(e)}")
+
+            error_msg = f"Failed to reconcile table {source_table}: {str(e)}"
             self.logger.error(
                 error_msg,
                 extra={"run_id": self.run_id, "operation": "reconciliation"},
@@ -302,6 +271,10 @@ class ReconciliationProvider(BaseProvider):
             schema_comparison_table = f"{recon_table_prefix}_schema_comparison"
             source_catalog = source_table.split(".")[0]
             target_catalog = target_table.split(".")[0]
+            source_schema = source_table.split(".")[1]
+            target_schema = target_table.split(".")[1]
+            source_tbl = source_table.split(".")[2]
+            target_tbl = target_table.split(".")[2]
             schema_query = f"""
             CREATE OR REPLACE TABLE {schema_comparison_table} AS
             WITH source_schema AS (
@@ -313,10 +286,10 @@ class ReconciliationProvider(BaseProvider):
                     is_nullable,
                     column_default,
                     ordinal_position
-                FROM {source_catalog}.information_schema.columns 
-                WHERE table_name = split('{source_table}', '\\.')[2]
-                  AND table_schema = split('{source_table}', '\\.')[1]
-                  AND table_catalog = split('{source_table}', '\\.')[0]
+                FROM {source_catalog}.information_schema.columns
+                WHERE table_name = '{source_tbl}'
+                  AND table_schema = '{source_schema}'
+                  AND table_catalog = '{source_catalog}'
             ),
             target_schema AS (
                 SELECT 
@@ -327,10 +300,10 @@ class ReconciliationProvider(BaseProvider):
                     is_nullable,
                     column_default,
                     ordinal_position
-                FROM {target_catalog}.information_schema.columns 
-                WHERE table_name = split('{target_table}', '\\.')[2]
-                  AND table_schema = split('{target_table}', '\\.')[1]
-                  AND table_catalog = split('{target_table}', '\\.')[0]
+                FROM {target_catalog}.information_schema.columns
+                WHERE table_name = '{target_tbl}'
+                  AND table_schema = '{target_schema}'
+                  AND table_catalog = '{target_catalog}'
             ),
             schema_diff AS (
                 SELECT 
@@ -370,6 +343,8 @@ class ReconciliationProvider(BaseProvider):
                     "passed": False,
                     "error": f"Schema check query failed: {last_exception}",
                     "output_table": schema_comparison_table,
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
                 }
 
             # Check if there are any mismatches
@@ -386,6 +361,8 @@ class ReconciliationProvider(BaseProvider):
                 "mismatch_count": mismatch_count,
                 "output_table": schema_comparison_table,
                 "details": "Schema check completed successfully",
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
 
         except Exception as e:
@@ -393,6 +370,8 @@ class ReconciliationProvider(BaseProvider):
                 "passed": False,
                 "error": f"Schema check failed: {str(e)}",
                 "output_table": schema_comparison_table,
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
 
     def _perform_row_count_check(
@@ -438,6 +417,8 @@ class ReconciliationProvider(BaseProvider):
                     "passed": False,
                     "error": f"Row count check query failed: {last_exception}",
                     "output_table": row_count_table,
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
                 }
 
             # Get the comparison result
@@ -451,6 +432,8 @@ class ReconciliationProvider(BaseProvider):
                 "difference": comparison_result["row_count_diff"],
                 "output_table": row_count_table,
                 "details": "Row count check completed successfully",
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
 
         except Exception as e:
@@ -458,6 +441,8 @@ class ReconciliationProvider(BaseProvider):
                 "passed": False,
                 "error": f"Row count check failed: {str(e)}",
                 "output_table": row_count_table,
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
 
     def _perform_missing_data_check(
@@ -539,6 +524,8 @@ class ReconciliationProvider(BaseProvider):
                     "passed": False,
                     "error": f"Missing data check query failed: {last_exception}",
                     "output_table": missing_data_table,
+                    "attempt": attempt,
+                    "max_attempts": max_attempts,
                 }
 
             # Get the comparison results
@@ -558,6 +545,8 @@ class ReconciliationProvider(BaseProvider):
                 "common_fields_count": len(common_fields),
                 "output_table": missing_data_table,
                 "details": "Missing data check completed successfully",
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
 
         except Exception as e:
@@ -565,4 +554,6 @@ class ReconciliationProvider(BaseProvider):
                 "passed": False,
                 "error": f"Missing data check failed: {str(e)}",
                 "output_table": missing_data_table,
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }

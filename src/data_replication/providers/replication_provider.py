@@ -15,6 +15,7 @@ from ..config.models import (
 )
 from .base_provider import BaseProvider
 from ..utils import retry_with_logging
+from ..exceptions import ReplicationError
 
 
 class ReplicationProvider(BaseProvider):
@@ -31,61 +32,17 @@ class ReplicationProvider(BaseProvider):
             and self.catalog_config.replication_config.enabled
         )
 
-    def process_catalog(self) -> List[RunResult]:
-        """Process all tables in a catalog for replication operations."""
-        return self.replicate_catalog()
-
     def process_table(self, schema_name: str, table_name: str) -> RunResult:
         """Process a single table for replication."""
         return self._replicate_table(schema_name, table_name)
 
-    def replicate_catalog(self) -> List[RunResult]:
-        """
-        Replicate all tables in a catalog based on configuration.
-
-        Returns:
-            List of RunResult objects for each replication operation
-        """
-        if not self.is_operation_enabled():
-            self.logger.info(
-                f"Replication is disabled for catalog: {self.catalog_config.catalog_name}"
-            )
-            return []
-
+    def setup_operation_catalogs(self):
+        """Setup replication-specific catalogs."""
         replication_config = self.catalog_config.replication_config
-        results = []
-        start_time = datetime.now(timezone.utc)
-
-        try:
-            # Ensure intermediate catalog exists
-            if replication_config.intermediate_catalog:
-                self.db_ops.create_catalog_if_not_exists(
-                    replication_config.intermediate_catalog
-                )
-
-            self.logger.info(
-                f"Starting replication for catalog: {self.catalog_config.catalog_name}",
-                extra={"run_id": self.run_id, "operation": "replication"},
+        if replication_config.intermediate_catalog:
+            self.db_ops.create_catalog_if_not_exists(
+                replication_config.intermediate_catalog
             )
-
-            # Get schemas to replicate
-            schema_list = self._get_schemas()
-
-            for schema_name, table_list in schema_list:
-                schema_results = self.process_schema_concurrently(
-                    schema_name, table_list
-                )
-                results.extend(schema_results)
-
-        except Exception as e:
-            error_msg = f"Failed to replicate catalog {self.catalog_config.catalog_name}: {str(e)}"
-            self.logger.error(error_msg, exc_info=True)
-            result = self._create_failed_result(
-                self.catalog_config.catalog_name, "", None, error_msg, start_time
-            )
-            results.append(result)
-
-        return results
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List
@@ -141,7 +98,7 @@ class ReplicationProvider(BaseProvider):
             if self.db_ops.get_table_fields(
                 source_table
             ) != self.db_ops.get_table_fields(actual_target_table):
-                raise Exception(
+                raise ReplicationError(
                     f"Schema mismatch between intermediate table {source_table} "
                     f"and target table {target_table}"
                 )
@@ -272,8 +229,12 @@ class ReplicationProvider(BaseProvider):
 
         except Exception as e:
             end_time = datetime.now(timezone.utc)
-            error_msg = f"Failed to replicate table {source_table}: {str(e)}"
 
+            # Wrap in ReplicationError for better error categorization
+            if not isinstance(e, ReplicationError):
+                e = ReplicationError(f"Replication operation failed: {str(e)}")
+
+            error_msg = f"Failed to replicate table {source_table}: {str(e)}"
             self.logger.error(
                 error_msg,
                 extra={"run_id": self.run_id, "operation": "replication"},
@@ -297,6 +258,8 @@ class ReplicationProvider(BaseProvider):
                     "step1_query": step1_query,
                     "step2_query": step2_query,
                 },
+                attempt_number=attempt,
+                max_attempts=max_attempts,
             )
 
     def _replicate_via_intermediate(

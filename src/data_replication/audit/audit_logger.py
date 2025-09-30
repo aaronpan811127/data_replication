@@ -5,8 +5,9 @@ This module provides audit logging functionality that can be used across
 different components to log operations to audit tables.
 """
 
+import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from databricks.connect import DatabricksSession
 from pyspark.sql.types import (
@@ -31,6 +32,7 @@ class AuditLogger:
         logger: DataReplicationLogger,
         run_id: str,
         audit_table: str,
+        config_details: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the audit logger and create audit table.
@@ -40,12 +42,20 @@ class AuditLogger:
             logger: Logger instance for standard logging
             run_id: Unique run identifier
             audit_table: Full audit table name (catalog.schema.table)
+            config_details: Full configuration object to be logged
         """
         self.spark = spark
         self.db_ops = db_ops
         self.logger = logger
         self.run_id = run_id
         self.audit_table = audit_table
+        self.config_details_json = json.dumps(config_details, default=str) if config_details else None
+        
+        # Get current execution user using Spark SQL
+        try:
+            self.execution_user = spark.sql("SELECT current_user() as user").collect()[0]["user"]
+        except Exception:
+            self.execution_user = "unknown"
 
         # Create audit table during instantiation
         self.create_audit_table()
@@ -89,7 +99,9 @@ class AuditLogger:
             error_message STRING,
             details STRING,
             attempt_number INT,
-            max_attempts INT
+            max_attempts INT,
+            config_details STRING,
+            execution_user STRING
         ) USING DELTA
         """
         self.spark.sql(create_table_sql)
@@ -143,6 +155,8 @@ class AuditLogger:
                 details,
                 attempt_number,
                 max_attempts,
+                self.config_details_json,
+                self.execution_user,
             )
         ]
 
@@ -163,6 +177,8 @@ class AuditLogger:
                 StructField("details", StringType(), True),
                 StructField("attempt_number", IntegerType(), True),
                 StructField("max_attempts", IntegerType(), True),
+                StructField("config_details", StringType(), True),
+                StructField("execution_user", StringType(), True),
             ]
         )
 

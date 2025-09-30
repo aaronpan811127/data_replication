@@ -6,11 +6,16 @@ provider types like backup, replication, and reconciliation.
 """
 
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError as FuturesTimeoutError,
+)
 from datetime import datetime, timezone
 from typing import List, Tuple, Optional
 
 from databricks.connect import DatabricksSession
+from pyspark.sql.utils import AnalysisException
 
 from ..audit.logger import DataReplicationLogger
 from ..config.models import (
@@ -20,6 +25,13 @@ from ..config.models import (
     TableConfig,
 )
 from ..databricks_operations import DatabricksOperations
+from ..exceptions import (
+    DataReplicationError, 
+    SparkSessionError, 
+    BackupError, 
+    ReplicationError, 
+    ReconciliationError
+)
 
 
 class BaseProvider(ABC):
@@ -61,14 +73,51 @@ class BaseProvider(ABC):
         self.timeout_seconds = timeout_seconds
 
     @abstractmethod
-    def process_catalog(self) -> List[RunResult]:
+    def setup_operation_catalogs(self):
         """
-        Process all tables in a catalog based on configuration.
-        Must be implemented by subclasses.
+        Setup operation-specific catalogs. Override in subclasses as needed.
+        Default implementation does nothing.
+        """
+
+    def _handle_exception(
+        self,
+        e: Exception,
+        context: str,
+        catalog_name: str,
+        schema_name: str = "",
+        table_name: str = "",
+        start_time: datetime = None,
+    ) -> RunResult:
+        """
+        Handle exceptions consistently across all operations.
+
+        Args:
+            e: The exception that occurred
+            context: Context description (e.g., "processing table", "processing schema")
+            catalog_name: Catalog name
+            schema_name: Schema name (optional)
+            table_name: Table name (optional)
+            start_time: Operation start time
 
         Returns:
-            List of RunResult objects for each operation
+            RunResult with failed status
         """
+        if isinstance(e, (FuturesTimeoutError, TimeoutError)):
+            error_msg = f"Timeout {context} {catalog_name}.{schema_name}.{table_name} after {self.timeout_seconds}s"
+            self.logger.error(error_msg)
+        elif isinstance(
+            e, (DataReplicationError, SparkSessionError, AnalysisException, 
+                BackupError, ReplicationError, ReconciliationError)
+        ):
+            error_msg = f"Failed to {context} {catalog_name}.{schema_name}.{table_name}: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+        else:
+            error_msg = f"Unexpected error {context} {catalog_name}.{schema_name}.{table_name}: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+
+        return self._create_failed_result(
+            catalog_name, schema_name, table_name, error_msg, start_time
+        )
 
     @abstractmethod
     def process_table(self, schema_name: str, table_name: str) -> RunResult:
@@ -93,7 +142,6 @@ class BaseProvider(ABC):
         Returns:
             String name of the operation (e.g., "backup", "replication")
         """
-        pass
 
     @abstractmethod
     def is_operation_enabled(self) -> bool:
@@ -104,7 +152,52 @@ class BaseProvider(ABC):
         Returns:
             True if operation is enabled, False otherwise
         """
-        pass
+
+    def process_catalog(self) -> List[RunResult]:
+        """
+        Process all tables in a catalog based on configuration.
+        Template method that provides common catalog processing pattern.
+
+        Returns:
+            List of RunResult objects for each operation
+        """
+        if not self.is_operation_enabled():
+            self.logger.info(
+                f"{self.get_operation_name().title()} is disabled for catalog: {self.catalog_config.catalog_name}"
+            )
+            return []
+
+        results = []
+        start_time = datetime.now(timezone.utc)
+
+        try:
+            # Setup operation-specific catalogs (implemented by subclasses)
+            self.setup_operation_catalogs()
+
+            self.logger.info(
+                f"Starting {self.get_operation_name()} for catalog: {self.catalog_config.catalog_name}",
+                extra={"run_id": self.run_id, "operation": self.get_operation_name()},
+            )
+
+            # Get schemas to process
+            schema_list = self._get_schemas()
+
+            for schema_name, table_list in schema_list:
+                schema_results = self.process_schema_concurrently(
+                    schema_name, table_list
+                )
+                results.extend(schema_results)
+
+        except Exception as e:
+            result = self._handle_exception(
+                e,
+                f"{self.get_operation_name()} catalog",
+                self.catalog_config.catalog_name,
+                start_time=start_time,
+            )
+            results.append(result)
+
+        return results
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List[TableConfig]
@@ -168,23 +261,19 @@ class BaseProvider(ABC):
                             )
 
                     except Exception as e:
-                        error_msg = (
-                            f"Failed to process table "
-                            f"{catalog_name}.{schema_name}.{table_name}: {str(e)}"
-                        )
-                        self.logger.error(error_msg, exc_info=True)
-                        result = self._create_failed_result(
-                            catalog_name, schema_name, table_name, error_msg, start_time
+                        result = self._handle_exception(
+                            e,
+                            "processing table",
+                            catalog_name,
+                            schema_name,
+                            table_name,
+                            start_time,
                         )
                         results.append(result)
 
         except Exception as e:
-            error_msg = (
-                f"Failed to process schema {catalog_name}.{schema_name}: {str(e)}"
-            )
-            self.logger.error(error_msg, exc_info=True)
-            result = self._create_failed_result(
-                catalog_name, schema_name, "", error_msg, start_time
+            result = self._handle_exception(
+                e, "processing schema", catalog_name, schema_name, start_time=start_time
             )
             results.append(result)
 
@@ -265,10 +354,7 @@ class BaseProvider(ABC):
         return [(item, []) for item in schema_list]
 
     def _get_tables(
-        self,
-        catalog_name: str,
-        schema_name: str,
-        table_list: List[TableConfig]
+        self, catalog_name: str, schema_name: str, table_list: List[TableConfig]
     ) -> List[str]:
         """
         Get list of tables to process in a schema based on configuration.
@@ -287,7 +373,9 @@ class BaseProvider(ABC):
             for schema_config in self.catalog_config.target_schemas:
                 if schema_config.schema_name == schema_name:
                     if schema_config.exclude_tables:
-                        exclude_names = {table.table_name for table in schema_config.exclude_tables}
+                        exclude_names = {
+                            table.table_name for table in schema_config.exclude_tables
+                        }
                     break
 
         if table_list:
@@ -299,6 +387,6 @@ class BaseProvider(ABC):
 
         # Apply exclusions first
         tables = [table for table in tables if table not in exclude_names]
-        
+
         # Then filter by table type (STREAMING_TABLE and MANAGED only)
         return self.db_ops.filter_tables_by_type(catalog_name, schema_name, tables)

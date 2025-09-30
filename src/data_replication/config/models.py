@@ -279,6 +279,8 @@ class AuditLogEntry(BaseModel):
     duration_seconds: Optional[float] = None
     attempt_number: Optional[int] = None
     max_attempts: Optional[int] = None
+    config_details: Optional[str] = None  # JSON string of the full configuration
+    execution_user: Optional[str] = None  # User who executed the operation
 
 
 class RunSummary(BaseModel):

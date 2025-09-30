@@ -74,12 +74,15 @@ class ProviderFactory:
         self.audit_logger: Optional[AuditLogger] = None
         if self.config.audit_config and self.config.audit_config.audit_table:
             try:
+                # Convert config to dict for logging
+                config_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else self.config.dict()
                 self.audit_logger = AuditLogger(
                     spark=self.logging_spark,
                     db_ops=self.db_ops,
                     logger=self.logger,
                     run_id=self.run_id,
                     audit_table=self.config.audit_config.audit_table,
+                    config_details=config_dict,
                 )
             except Exception as e:
                 self.logger.warning(f"Failed to initialize AuditLogger: {str(e)}")
