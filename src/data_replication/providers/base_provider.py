@@ -391,4 +391,4 @@ class BaseProvider(ABC):
         tables = [table for table in tables if table not in exclude_names]
 
         # Then filter by table type (STREAMING_TABLE and MANAGED only)
-        return self.db_ops.filter_tables_by_type(self.catalog_name, schema_name, tables)
+        return self.db_ops.filter_tables_by_type(self.catalog_name, schema_name, tables, self.catalog_config.table_types)

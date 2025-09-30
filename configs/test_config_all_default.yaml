@@ -23,6 +23,7 @@ audit_config:
 
 target_catalogs:
   - catalog_name: "aaron"
+    table_types: ["managed"]
     backup_config:
       enabled: true
     replication_config:

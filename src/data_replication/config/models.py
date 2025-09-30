@@ -14,8 +14,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class TableType(str, Enum):
     """Enumeration of supported table types."""
 
-    m = "delta"
-    DELTA_LIVE_TABLE = "delta_live_table"
+    MANAGED = "managed"
+    STREAMING_TABLE = "streaming_table"
+    EXTERNAL = "external"
+    VIEW = "view"
+    MATERIALIZED_VIEW = "materialized_view"
 
 
 class ExecuteAt(str, Enum):
@@ -142,6 +145,9 @@ class TargetCatalogConfig(BaseModel):
     """Configuration for target catalogs."""
 
     catalog_name: str
+    table_types: List[TableType] = Field(
+        default_factory=lambda: [TableType.MANAGED, TableType.STREAMING_TABLE]
+    )
     schema_filter_expression: Optional[str] = None
     backup_config: Optional[BackupConfig] = None
     # delta_share_config: Optional[DeltaShareConfig] = None

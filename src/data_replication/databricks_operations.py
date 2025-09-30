@@ -10,6 +10,7 @@ from typing import Tuple
 from databricks.connect import DatabricksSession
 from pyspark.sql.functions import col
 
+from data_replication.config.models import TableType
 from data_replication.exceptions import TableNotFoundError
 
 
@@ -74,7 +75,11 @@ class DatabricksOperations:
             return []
 
     def filter_tables_by_type(
-        self, catalog_name: str, schema_name: str, table_names: List[str]
+        self,
+        catalog_name: str,
+        schema_name: str,
+        table_names: List[str],
+        table_types: List[TableType],
     ) -> List[str]:
         """
         Filter a list of table names to only include STREAMING_TABLE and MANAGED types.
@@ -90,6 +95,7 @@ class DatabricksOperations:
 
         try:
             table_names_values = ", ".join([f"('{name}')" for name in table_names])
+            table_types_str = ", ".join([f"'{t.value.upper()}'" for t in table_types])
             info_schema_query = f"""
                 SELECT filter_tables.table_name 
                 FROM (VALUES {table_names_values}) AS filter_tables(table_name)
@@ -99,7 +105,7 @@ class DatabricksOperations:
                 ) AS t
                 ON t.table_name = filter_tables.table_name
                 WHERE t.table_type IS NULL
-                  OR t.table_type IN ('STREAMING_TABLE', 'MANAGED')
+                  OR t.table_type IN ({table_types_str})
             """
 
             tables_df = self.spark.sql(info_schema_query)
