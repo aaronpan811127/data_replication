@@ -72,33 +72,31 @@ class BackupConfig(BaseModel):
     backup_catalog: Optional[str] = None
 
 
-# Delta Share support will be enabled in a future release
-# class DeltaShareConfig(BaseModel):
-#     """Configuration for Delta Share operations."""
+class DeltaShareConfig(BaseModel):
+    """Configuration for Delta Share operations."""
 
-#     enabled: bool = True
-#     recipient_id: Optional[str] = None
-#     shared_catalog: Optional[str] = '__replication_internal_aaron_to_aws'
-#     share_name: Optional[str] = '__replication_internal_aaron_to_aws'
-#     shared_catalog_name: Optional[str] = '__replication_internal_aaron_from_azure'
+    enabled: bool = True
+    recipient_id: Optional[str] = None
+    shared_catalog: Optional[str] = None
+    share_name: Optional[str] = None
+    provider_name: Optional[str] = None
+    recipient_catalog_name: Optional[str] = None
 
-#     @model_validator(mode="after")
-#     def validate_deltashare_config(self):
-#         """Validate required fields when delta share is enabled."""
-#         if self.enabled:
-#             required_fields = [
-#                 "recipient_id"
-#             ]
-#             missing_fields = [
-#                 field for field in required_fields if getattr(self, field) is None
-#             ]
+    @model_validator(mode="after")
+    def validate_deltashare_config(self):
+        """Validate required fields when delta share is enabled."""
+        if self.enabled:
+            required_fields = ["recipient_id", "provider_name"]
+            missing_fields = [
+                field for field in required_fields if getattr(self, field) is None
+            ]
 
-#             if missing_fields:
-#                 raise ValueError(
-#                     f"When delta share is enabled, the following fields are "
-#                     f"required: {missing_fields}"
-#                 )
-#         return self
+            if missing_fields:
+                raise ValueError(
+                    f"When delta share is enabled, the following fields are "
+                    f"required: {missing_fields}"
+                )
+        return self
 
 
 class ReplicationConfig(BaseModel):
@@ -108,13 +106,14 @@ class ReplicationConfig(BaseModel):
     source_catalog: Optional[str] = None
     intermediate_catalog: Optional[str] = None
     enforce_schema: Optional[bool] = True
+    delta_share_config: Optional[DeltaShareConfig] = None
 
 
 class ReconciliationConfig(BaseModel):
     """Configuration for reconciliation operations."""
 
     enabled: bool = True
-    # delta_share_config: Optional[DeltaShareConfig] = None
+    delta_share_config: Optional[DeltaShareConfig] = None
     source_catalog: str
     recon_outputs_catalog: str
     schema_check: Optional[bool] = True
@@ -247,19 +246,20 @@ class ReplicationSystemConfig(BaseModel):
 
     @model_validator(mode="after")
     def derive_default_catalogs(self):
-        """
-        Derive default catalogs when not provided in the config.
-        - Backup catalogs: __replication_internal_{catalog_name}_to_{target_databricks_connect_config.name}
-        - Replication source catalogs: __replication_internal_{catalog_name}_from_{source_databricks_connect_config.name}
-        """
+        """Derive default names if not provided."""
         target_name = self.target_databricks_connect_config.name
         source_name = self.source_databricks_connect_config.name
 
         for catalog in self.target_catalogs:
+            default_backup_catalog = (
+                f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
+            )
+            default_shared_backup_catalog = (
+                f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
+            )
             # Derive default backup catalogs
             if catalog.backup_config and catalog.backup_config.enabled:
                 if catalog.backup_config.backup_catalog is None:
-                    default_backup_catalog = f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
                     catalog.backup_config.backup_catalog = default_backup_catalog
                 # Derive default backup source catalogs
                 if catalog.backup_config.source_catalog is None:
@@ -268,8 +268,52 @@ class ReplicationSystemConfig(BaseModel):
             # Derive default replication source catalogs
             if catalog.replication_config and catalog.replication_config.enabled:
                 if catalog.replication_config.source_catalog is None:
-                    default_source_catalog = f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
-                    catalog.replication_config.source_catalog = default_source_catalog
+                    catalog.replication_config.source_catalog = default_shared_backup_catalog
+
+            # Derive default delta share settings for replication
+            if (
+                catalog.replication_config.delta_share_config
+                and catalog.replication_config.delta_share_config.enabled
+            ):
+                if catalog.replication_config.delta_share_config.shared_catalog is None:
+                    catalog.replication_config.delta_share_config.shared_catalog = (
+                        default_backup_catalog
+                    )
+                if catalog.replication_config.delta_share_config.share_name is None:
+                    catalog.replication_config.delta_share_config.share_name = (
+                        default_backup_catalog
+                    )
+                if (
+                    catalog.replication_config.delta_share_config.recipient_catalog_name
+                    is None
+                ):
+                    catalog.replication_config.delta_share_config.recipient_catalog_name = (
+                        default_shared_backup_catalog
+                    )
+
+            # Derive default delta share settings for reconciliation
+            if (
+                catalog.reconciliation_config.delta_share_config
+                and catalog.reconciliation_config.delta_share_config.enabled
+            ):
+                default_shared_catalog = (
+                    f"__{catalog.catalog_name}_to_{target_name}"
+                )
+                if catalog.reconciliation_config.delta_share_config.shared_catalog is None:
+                    catalog.reconciliation_config.delta_share_config.shared_catalog = (
+                        default_shared_catalog
+                    )
+                if catalog.reconciliation_config.delta_share_config.share_name is None:
+                    catalog.reconciliation_config.delta_share_config.share_name = (
+                        default_shared_catalog
+                    )
+                if (
+                    catalog.reconciliation_config.delta_share_config.recipient_catalog_name
+                    is None
+                ):
+                    catalog.reconciliation_config.delta_share_config.recipient_catalog_name = (
+                        f"__{catalog.catalog_name}_from_{source_name}"
+                    )
 
         return self
 

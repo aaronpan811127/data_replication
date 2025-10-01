@@ -368,3 +368,118 @@ class DatabricksOperations:
         except Exception as e:
             print(f"Warning: Could not get fields for table {table_name}: {e}")
             return []
+
+    def create_delta_sharing_recipient(self, recipient_name: str, authentication_type: str = "TOKEN") -> bool:
+        """
+        Create a Delta Sharing recipient.
+
+        Args:
+            recipient_name: Name of the recipient
+            authentication_type: Authentication type (TOKEN or IP_ACCESS_LIST)
+
+        Returns:
+            True if created successfully, False if already exists
+        """
+        try:
+            self.spark.sql(f"""
+                CREATE RECIPIENT IF NOT EXISTS {recipient_name}
+            """)
+            return True
+        except Exception as e:
+            print(f"Warning: Could not create recipient {recipient_name}: {e}")
+            return False
+
+    def create_share(self, share_name: str) -> bool:
+        """
+        Create a Delta Share.
+
+        Args:
+            share_name: Name of the share
+
+        Returns:
+            True if created successfully, False if already exists
+        """
+        try:
+            self.spark.sql(f"""
+                CREATE SHARE IF NOT EXISTS {share_name}
+            """)
+            return True
+        except Exception as e:
+            print(f"Warning: Could not create share {share_name}: {e}")
+            return False
+
+    def grant_share_to_recipient(self, share_name: str, recipient_name: str) -> bool:
+        """
+        Grant a share to a recipient.
+
+        Args:
+            share_name: Name of the share
+            recipient_name: Name of the recipient
+
+        Returns:
+            True if granted successfully, False otherwise
+        """
+        try:
+            self.spark.sql(f"""
+                GRANT SELECT ON SHARE {share_name} TO RECIPIENT {recipient_name}
+            """)
+            return True
+        except Exception as e:
+            print(f"Warning: Could not grant share {share_name} to recipient {recipient_name}: {e}")
+            return False
+
+    def add_schema_to_share(self, share_name: str, schema_name: str) -> bool:
+        """
+        Add schema to share, checking if schema already exists in share.
+
+        Args:
+            share_name: Name of the share
+            schema_name: Full schema name (catalog.schema)
+
+        Returns:
+            True if added, False if already exists in share
+        """
+        try:
+            # Check if schema already exists in the share
+            existing_schemas_df = self.spark.sql(f"SHOW ALL IN SHARE {share_name}")
+            existing_schemas = [row['name'] for row in existing_schemas_df.collect() 
+                             if row['type'] == 'SCHEMA' and row['name'] == schema_name]
+            
+            if existing_schemas:
+                print(f"Schema {schema_name} already exists in share {share_name}")
+                return False
+            
+            # Add schema to share
+            self.spark.sql(f"""
+                ALTER SHARE {share_name} ADD SCHEMA {schema_name}
+            """)
+            print(f"Added schema {schema_name} to share {share_name}")
+            return True
+        except Exception as e:
+            print(f"Warning: Could not add schema {schema_name} to share {share_name}: {e}")
+            return False
+
+    def create_catalog_from_share(self, catalog_name: str, share_name: str, provider: str) -> bool:
+        """
+        Create a catalog from a Delta Share.
+
+        Args:
+            catalog_name: Name of the catalog to create
+            share_name: Name of the share
+            provider: Provider name for the share
+
+        Returns:
+            True if created successfully, False otherwise
+        """
+        try:
+            self.spark.sql(f"""
+                CREATE CATALOG IF NOT EXISTS {catalog_name}
+                USING DELTASHARING
+                OPTIONS (
+                    share = '{provider}.{share_name}'
+                )
+            """)
+            return True
+        except Exception as e:
+            print(f"Warning: Could not create catalog {catalog_name} from share {share_name}: {e}")
+            return False
