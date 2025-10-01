@@ -20,7 +20,7 @@ target_databricks_connect_config:
     secret_key: "pat_target"
 
 audit_config:
-  audit_table: "aaron.audit.audit_loggging"
+  audit_table: "aaron.audit.audit_logging"
 
 target_catalogs:
   - catalog_name: "aaron"

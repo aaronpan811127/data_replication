@@ -19,11 +19,12 @@ target_databricks_connect_config:
     secret_key: "pat_target"
 
 audit_config:
-  audit_table: "aaron.audit.audit_loggging"
+  audit_table: "aaron.audit.audit_logging"
 
 target_catalogs:
   - catalog_name: "aaron"
-    table_types: ["streaming_table","managed","external","view","materialized_view"]  
+    table_types:
+      ["streaming_table", "managed", "external", "view", "materialized_view"]
     backup_config:
       enabled: false
     replication_config:
@@ -32,10 +33,11 @@ target_catalogs:
       enabled: true
       source_catalog: aaron_azure_shared
       recon_outputs_catalog: aaron_azure_shared_recon_results
+      exclude_columns: ["timestamp", "created_at", "updated_at", "id"]
     target_schemas:
       - schema_name: "bronze_1"
         # tables:
-          # - table_name: "table_3"
+        # - table_name: "table_3"
         #   # - table_name: "table_1"
         #   # - table_name: "table_2"
         #   # - table_name: "sample_trips_ldp"

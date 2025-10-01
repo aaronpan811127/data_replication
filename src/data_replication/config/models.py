@@ -120,6 +120,7 @@ class ReconciliationConfig(BaseModel):
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
+    exclude_columns: Optional[List[str]] = None
 
     @model_validator(mode="after")
     def validate_reconciliation_config(self):
