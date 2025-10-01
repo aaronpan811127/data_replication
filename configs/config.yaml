@@ -24,6 +24,7 @@ audit_config:
 # replicator configuration
 target_catalogs:
   - catalog_name: "aaron"
+    table_types: ["managed","streaming_table"]
     schema_filter_expression: "databaseName like 'bonze_%'"
     backup_config:
       enabled: true
