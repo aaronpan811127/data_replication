@@ -183,8 +183,12 @@ class BaseProvider(ABC):
             self.catalog_name = self.setup_operation_catalogs()
 
             self.logger.info(
-                f"Starting {self.get_operation_name()} for catalog: {self.catalog_config.catalog_name}",
+                f"Starting {self.get_operation_name()}: {self.catalog_name}->{self.catalog_config.catalog_name}",
                 extra={"run_id": self.run_id, "operation": self.get_operation_name()},
+            )
+            # Ensure target catalog exists
+            self.db_ops.create_catalog_if_not_exists(
+                self.catalog_config.catalog_name
             )
 
             # Get schemas to process

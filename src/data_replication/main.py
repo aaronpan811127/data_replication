@@ -10,6 +10,7 @@ import sys
 import os
 import argparse
 from pathlib import Path
+import time
 import uuid
 from databricks.sdk import WorkspaceClient
 from data_replication.utils import create_spark_session
@@ -80,9 +81,7 @@ def run_replication_only(
     replication_factory = ProviderFactory(
         "replication", config, spark, spark, logger, run_id
     )
-    logger.info(
-        f"Replication operations in {config.execute_at.value} environment"
-    )
+    logger.info(f"Replication operations in {config.execute_at.value} environment")
     summary = replication_factory.run_replication_operations()
 
     if summary.failed_operations > 0:
@@ -102,9 +101,7 @@ def run_reconciliation_only(
     reconciliation_factory = ProviderFactory(
         "reconciliation", config, spark, spark, logger, run_id
     )
-    logger.info(
-        f"Reconciliation operations in {config.execute_at.value} environment"
-    )
+    logger.info(f"Reconciliation operations in {config.execute_at.value} environment")
     summary = reconciliation_factory.run_reconciliation_operations()
 
     if summary.failed_operations > 0:
@@ -232,8 +229,8 @@ def main():
                 if cat.backup_config and cat.backup_config.enabled
             ]
 
-            logger.info(f"Backup Begins {'-' * 60}")
             if backup_catalogs:
+                logger.info(f"Backup Begins {'-' * 60}")
                 logger.info(
                     f"Running backup operations for {len(backup_catalogs)} catalogs"
                 )
@@ -253,31 +250,38 @@ def main():
                     logging_host,
                     logging_token,
                 )
+                logger.info(f"Backup Ends {'-' * 60}")
             elif args.operation == "backup":
-                logger.info("No catalogs configured for backup")
-            logger.info(f"Backup Ends {'-' * 60}")
+                logger.info("Backup disabled or No catalogs configured for backup")
 
         # if args.operation in ["all", "delta_share"]:
         #     logger.info("Delta share operations not yet implemented")
 
         if args.operation in ["all", "replication"]:
+            # if args.operation == "all":
+            #     time.sleep(
+            #         120
+            #     )  # Ensure delta share metadata is available before replication
+
             # Check if replication is configured
             replication_catalogs = [
                 cat
                 for cat in config.target_catalogs
                 if cat.replication_config and cat.replication_config.enabled
             ]
-            logger.info(f"Replication Begins {'-' * 60}")
+
             if replication_catalogs:
+                logger.info(f"Replication Begins {'-' * 60}")
                 logger.info(
                     f"Running replication operations for {len(replication_catalogs)} catalogs"
                 )
 
                 run_replication_only(config, logger, run_id, target_host, target_token)
-
+                logger.info(f"Replication Ends {'-' * 60}")
             elif args.operation == "replication":
-                logger.info("No catalogs configured for replication")
-            logger.info(f"Replication Ends {'-' * 60}")
+                logger.info(
+                    "Replication disabled or No catalogs configured for replication"
+                )
 
         if args.operation in ["all", "reconciliation"]:
             # Check if reconciliation is configured
@@ -286,8 +290,9 @@ def main():
                 for cat in config.target_catalogs
                 if cat.reconciliation_config and cat.reconciliation_config.enabled
             ]
-            logger.info(f"Reconciliation Begins {'-' * 60}")
+
             if reconciliation_catalogs:
+                logger.info(f"Reconciliation Begins {'-' * 60}")
                 logger.info(
                     f"Running reconciliation operations for {len(reconciliation_catalogs)} catalogs"
                 )
@@ -295,9 +300,11 @@ def main():
                 run_reconciliation_only(
                     config, logger, run_id, target_host, target_token
                 )
+                logger.info(f"Reconciliation Ends {'-' * 60}")
             elif args.operation == "reconciliation":
-                logger.info("No catalogs configured for reconciliation")
-            logger.info(f"Reconciliation Ends {'-' * 60}")
+                logger.info(
+                    "Reconciliation disabled or No catalogs configured for reconciliation"
+                )
 
         logger.info(f"All Operations Ends {'-' * 60}")
 

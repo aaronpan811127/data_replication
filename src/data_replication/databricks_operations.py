@@ -93,27 +93,12 @@ class DatabricksOperations:
             List of table names that are STREAMING_TABLE or MANAGED
         """
 
-        try:
-            table_names_values = ", ".join([f"('{name}')" for name in table_names])
-            table_types_str = ", ".join([f"'{t.value.upper()}'" for t in table_types])
-            info_schema_query = f"""
-                SELECT filter_tables.table_name 
-                FROM (VALUES {table_names_values}) AS filter_tables(table_name)
-                LEFT OUTER JOIN (
-                SELECT * FROM {catalog_name}.information_schema.tables
-                WHERE table_schema = '{schema_name}'
-                ) AS t
-                ON t.table_name = filter_tables.table_name
-                WHERE t.table_type IS NULL
-                  OR t.table_type IN ({table_types_str})
-            """
-
-            tables_df = self.spark.sql(info_schema_query)
-            return [row.table_name for row in tables_df.collect()]
-
-        except Exception:
-            # If filtering fails, return all provided tables
-            return table_names
+        return [
+            table
+            for table in table_names
+            if self.get_table_type(f"{catalog_name}.{schema_name}.{table}").upper()
+            in [type.upper() for type in table_types]
+        ]
 
     def get_all_schemas(self, catalog_name: str) -> List[str]:
         """
@@ -202,6 +187,46 @@ class DatabricksOperations:
             True if table exists, False otherwise
         """
         return self.spark.catalog.tableExists(table_name)
+
+    def get_table_type(self, table_name) -> str:
+        pipeline_id = None
+        table_type = None
+        if self.spark.catalog.tableExists(table_name):
+            # First check if it's a view using DESCRIBE EXTENDED to avoid DESCRIBE DETAIL error
+            try:
+                table_type = (
+                    self.spark.sql(f"DESCRIBE EXTENDED {table_name}")
+                    .filter(
+                        (col("col_name") == "Type")
+                        & (
+                            (col("data_type").contains("MANAGED"))
+                            | (col("data_type").contains("EXTERNAL"))
+                            | (col("data_type").contains("STREAMING_TABLE"))
+                            | (col("data_type").contains("MATERIALIZED_VIEW"))
+                            | (col("data_type").contains("VIEW"))
+                        )
+                    )
+                    .select("data_type")
+                    .collect()[0][0]
+                )
+                if table_type != "MANAGED":
+                    return table_type
+            except Exception:
+                pass
+            # when it's Managed, check if it's STREAMING_TABLE as it may be a backup table
+            pipeline_id = (
+                self.spark.sql(f"DESCRIBE DETAIL {table_name}")
+                .collect()[0]
+                .asDict()["properties"]
+                .get("pipelines.pipelineId", None)
+            )
+            if pipeline_id:
+                table_type = "STREAMING_TABLE"
+                return table_type
+
+            return "MANAGED"
+
+        raise TableNotFoundError(f"Table {table_name} does not exist")
 
     def drop_table_if_exists(self, table_name: str) -> None:
         """

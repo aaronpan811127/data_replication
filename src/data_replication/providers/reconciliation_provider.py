@@ -81,8 +81,8 @@ class ReconciliationProvider(BaseProvider):
         self.db_ops.create_catalog_if_not_exists(
             reconciliation_config.recon_outputs_catalog
         )
-        self.logger.info(f"Reconciling catalog: {self.catalog_config.catalog_name}")
-        return self.catalog_config.catalog_name
+        self.logger.info(f"Reconciling catalog: {reconciliation_config.source_catalog}")
+        return reconciliation_config.source_catalog
 
     def process_schema_concurrently(
         self, schema_name: str, table_list: List

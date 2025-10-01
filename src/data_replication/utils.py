@@ -64,21 +64,25 @@ def retry_with_logging(
                 except Exception as e:
                     last_exception = e
 
-                    logger.warning(
-                        f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}: {str(e)}"
-                    )
+                    if logger and hasattr(logger, "warning"):
+                        logger.warning(
+                            f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}: {str(e)}"
+                        )
 
                     if attempt < retry_config.max_attempts:
-                        logger.debug(f"Waiting {current_delay:.1f}s before retry...")
+                        if logger and hasattr(logger, "debug"):
+                            logger.debug(f"Waiting {current_delay:.1f}s before retry...")
                         time.sleep(current_delay)
                         current_delay *= 2.0  # Exponential backoff
-                        logger.info(
-                            f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}"
-                        )
+                        if logger and hasattr(logger, "info"):
+                            logger.info(
+                                f"{func.__name__} failed on attempt {attempt}/{retry_config.max_attempts}"
+                            )
                     else:
-                        logger.error(
-                            f"{func.__name__} failed after {retry_config.max_attempts} attempts"
-                        )
+                        if logger and hasattr(logger, "error"):
+                            logger.error(
+                                f"{func.__name__} failed after {retry_config.max_attempts} attempts"
+                            )
 
             return False, last_exception, attempt, retry_config.max_attempts
 
