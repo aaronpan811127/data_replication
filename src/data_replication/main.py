@@ -8,16 +8,6 @@ including backup, delta share, replication, and reconciliation.
 
 import sys
 import os
-import argparse
-from pathlib import Path
-import time
-import uuid
-from databricks.sdk import WorkspaceClient
-from data_replication.utils import create_spark_session
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.config.loader import ConfigLoader
-from data_replication.exceptions import ConfigurationError
-from data_replication.providers.provider_factory import ProviderFactory
 
 # Determine the parent directory of the current script for module imports
 pwd = ""
@@ -33,9 +23,22 @@ try:
 except NameError:
     # Fallback when running outside Databricks (e.g. local development or tests)
     parent_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if not parent_folder.startswith("/Workspace"):
+    parent_folder = "/Workspace" + parent_folder
 # Append the framework path to the system path for module resolution
 if parent_folder not in sys.path:
     sys.path.append(parent_folder)
+
+import argparse
+from pathlib import Path
+import uuid
+from databricks.sdk import WorkspaceClient
+from data_replication.utils import create_spark_session
+from data_replication.audit.logger import DataReplicationLogger
+from data_replication.config.loader import ConfigLoader
+from data_replication.exceptions import ConfigurationError
+from data_replication.providers.provider_factory import ProviderFactory
 
 
 def create_logger(config) -> DataReplicationLogger:
