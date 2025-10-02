@@ -10,8 +10,9 @@ from typing import Tuple
 from databricks.connect import DatabricksSession
 from pyspark.sql.functions import col
 
-from data_replication.config.models import TableType
+from data_replication.config.models import TableType, RetryConfig
 from data_replication.exceptions import TableNotFoundError
+from data_replication.utils import retry_with_logging
 
 
 class DatabricksOperations:
@@ -176,6 +177,7 @@ class DatabricksOperations:
             )
             return {"properties": properties}
 
+    @retry_with_logging(retry_config=RetryConfig(retries=5, delay=3))
     def table_exists(self, table_name: str) -> bool:
         """
         Check if a table exists.
@@ -186,8 +188,7 @@ class DatabricksOperations:
         Returns:
             True if table exists, False otherwise
         """
-        # Refresh table metadata in delta share catalog
-        self.spark.sql(f"select 1 from {table_name} where 1=0")
+        # Retry to refresh table metadata in delta share catalog
         return self.spark.catalog.tableExists(table_name)
 
     def get_table_type(self, table_name) -> str:
