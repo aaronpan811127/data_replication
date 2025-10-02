@@ -300,7 +300,7 @@ class ReconciliationProvider(BaseProvider):
         try:
             # Use consolidated schema comparison table
             reconciliation_config = self.catalog_config.reconciliation_config
-            schema_comparison_table = f"{reconciliation_config.recon_outputs_catalog}.reconciliation_results.schema_comparison"
+            schema_comparison_table = f"{reconciliation_config.recon_outputs_catalog}.{reconciliation_config.recon_outputs_schema}.recon_schema_comparison"
             
             source_catalog = source_table.split(".")[0]
             target_catalog = target_table.split(".")[0]
@@ -533,7 +533,7 @@ class ReconciliationProvider(BaseProvider):
         try:
             # Use consolidated missing data comparison table
             reconciliation_config = self.catalog_config.reconciliation_config
-            missing_data_table = f"{reconciliation_config.recon_outputs_catalog}.reconciliation_results.missing_data_comparison"
+            missing_data_table = f"{reconciliation_config.recon_outputs_catalog}.{reconciliation_config.recon_outputs_schema}.recon_missing_data_comparison"
             
             source_catalog = source_table.split(".")[0]
             target_catalog = target_table.split(".")[0]
