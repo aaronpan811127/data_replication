@@ -148,11 +148,25 @@ class ReconciliationProvider(BaseProvider):
 
             # Schema check
             if reconciliation_config.schema_check:
+                schema_start_time = datetime.now(timezone.utc)
+                self.logger.info(
+                    f"Starting schema check for {source_table} vs {target_table}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
                 schema_result = self._perform_schema_check(
                     source_table,
                     target_table,
                     reconciliation_operation,
                 )
+                schema_end_time = datetime.now(timezone.utc)
+                schema_duration = (schema_end_time - schema_start_time).total_seconds()
+                
+                self.logger.info(
+                    f"Schema check completed for {source_table} vs {target_table} "
+                    f"({schema_duration:.2f}s) - {'PASSED' if schema_result['passed'] else 'FAILED'}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
+                
                 reconciliation_results["schema_check"] = schema_result
                 if not schema_result["passed"]:
                     failed_checks.append("schema_check")
@@ -164,11 +178,25 @@ class ReconciliationProvider(BaseProvider):
 
             # Row count check
             if reconciliation_config.row_count_check and continue_checks:
+                row_count_start_time = datetime.now(timezone.utc)
+                self.logger.info(
+                    f"Starting row count check for {source_table} vs {target_table}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
                 row_count_result = self._perform_row_count_check(
                     source_table,
                     target_table,
                     reconciliation_operation,
                 )
+                row_count_end_time = datetime.now(timezone.utc)
+                row_count_duration = (row_count_end_time - row_count_start_time).total_seconds()
+                
+                self.logger.info(
+                    f"Row count check completed for {source_table} vs {target_table} "
+                    f"({row_count_duration:.2f}s) - {'PASSED' if row_count_result['passed'] else 'FAILED'}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
+                
                 reconciliation_results["row_count_check"] = row_count_result
                 if not row_count_result["passed"]:
                     failed_checks.append("row_count_check")
@@ -187,11 +215,25 @@ class ReconciliationProvider(BaseProvider):
 
             # Missing data check
             if reconciliation_config.missing_data_check and continue_checks:
+                missing_data_start_time = datetime.now(timezone.utc)
+                self.logger.info(
+                    f"Starting missing data check for {source_table} vs {target_table}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
                 missing_data_result = self._perform_missing_data_check(
                     source_table,
                     target_table,
                     reconciliation_operation,
                 )
+                missing_data_end_time = datetime.now(timezone.utc)
+                missing_data_duration = (missing_data_end_time - missing_data_start_time).total_seconds()
+                
+                self.logger.info(
+                    f"Missing data check completed for {source_table} vs {target_table} "
+                    f"({missing_data_duration:.2f}s) - {'PASSED' if missing_data_result['passed'] else 'FAILED'}",
+                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                )
+                
                 reconciliation_results["missing_data_check"] = missing_data_result
                 if not missing_data_result["passed"]:
                     failed_checks.append("missing_data_check")
@@ -220,6 +262,15 @@ class ReconciliationProvider(BaseProvider):
                     extra={"run_id": self.run_id, "operation": "reconciliation"},
                 )
 
+                # Collect check durations for audit logging
+                check_durations = {}
+                if reconciliation_config.schema_check and 'schema_check' in reconciliation_results:
+                    check_durations["schema_check_duration_seconds"] = schema_duration
+                if reconciliation_config.row_count_check and 'row_count_check' in reconciliation_results:
+                    check_durations["row_count_check_duration_seconds"] = row_count_duration
+                if reconciliation_config.missing_data_check and 'missing_data_check' in reconciliation_results:
+                    check_durations["missing_data_check_duration_seconds"] = missing_data_duration
+
                 return RunResult(
                     operation_type="reconciliation",
                     catalog_name=target_catalog,
@@ -235,6 +286,7 @@ class ReconciliationProvider(BaseProvider):
                         "failed_checks": failed_checks,
                         "skipped_checks": skipped_checks,
                         "recon_outputs_prefix": recon_table_prefix,
+                        "check_durations": check_durations,
                     },
                 )
             else:
@@ -243,6 +295,15 @@ class ReconciliationProvider(BaseProvider):
                     f"Reconciliation failed: {source_table} vs {target_table} - {error_msg}",
                     extra={"run_id": self.run_id, "operation": "reconciliation"},
                 )
+
+                # Collect check durations for audit logging (for failed case)
+                check_durations = {}
+                if reconciliation_config.schema_check and 'schema_check' in reconciliation_results:
+                    check_durations["schema_check_duration_seconds"] = locals().get('schema_duration', 0.0)
+                if reconciliation_config.row_count_check and 'row_count_check' in reconciliation_results:
+                    check_durations["row_count_check_duration_seconds"] = locals().get('row_count_duration', 0.0)
+                if reconciliation_config.missing_data_check and 'missing_data_check' in reconciliation_results:
+                    check_durations["missing_data_check_duration_seconds"] = locals().get('missing_data_duration', 0.0)
 
                 return RunResult(
                     operation_type="reconciliation",
@@ -260,6 +321,7 @@ class ReconciliationProvider(BaseProvider):
                         "failed_checks": failed_checks,
                         "skipped_checks": skipped_checks,
                         "recon_outputs_prefix": recon_table_prefix,
+                        "check_durations": check_durations,
                     },
                 )
 
