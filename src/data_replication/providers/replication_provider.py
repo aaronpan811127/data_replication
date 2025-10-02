@@ -89,8 +89,8 @@ class ReplicationProvider(BaseProvider):
 
         try:
             # Refresh source table delta share metadata
-            if not self.spark.catalog.tableExists(source_table):
-                self.spark.catalog.tableExists(source_table)
+            if not self.db_ops.table_exists(source_table):
+                raise TableNotFoundError(f"Source table does not exist: {source_table}")
 
             try:
                 table_details = self.db_ops.get_table_details(target_table)
@@ -107,7 +107,7 @@ class ReplicationProvider(BaseProvider):
                 pipeline_id = None
                 actual_target_table = target_table
 
-            if self.spark.catalog.tableExists(target_table):
+            if self.db_ops.table_exists(target_table):
                 if self.db_ops.get_table_fields(
                     source_table
                 ) != self.db_ops.get_table_fields(actual_target_table):
@@ -115,33 +115,14 @@ class ReplicationProvider(BaseProvider):
                         f"Schema mismatch between intermediate table {source_table} "
                         f"and target table {target_table}"
                     )
+            else:
+                raise TableNotFoundError(f"Source table does not exist: {source_table}")
 
             # Use custom retry decorator with logging
             @retry_with_logging(self.retry, self.logger)
             def replication_operation(query: str):
                 self.spark.sql(query)
                 return True
-
-            # def replication_operation(source_table: str, target_table: str):
-            #     dt = DeltaTable.forName(self.spark, source_table)
-            #     if self.spark.catalog.tableExists(target_table):
-            #         desc_detail_df = self.spark.sql(f"DESC DETAIL {target_table}")
-            #         properties = desc_detail_df.select("properties").first()[
-            #             "properties"
-            #         ]
-            #         dt.clone(
-            #             target=target_table,
-            #             isShallow=False,
-            #             replace=True,
-            #             properties=properties,
-            #         )
-            #     else:
-            #         dt.clone(
-            #             target=target_table,
-            #             isShallow=False,
-            #             replace=True
-            #         )
-            #     return True
 
             # Determine replication strategy based on table type and config
             if replication_config.intermediate_catalog:

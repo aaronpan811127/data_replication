@@ -186,12 +186,14 @@ class DatabricksOperations:
         Returns:
             True if table exists, False otherwise
         """
+        # Refresh table metadata in delta share catalog
+        self.spark.sql(f"select 1 from {table_name} where 1=0")
         return self.spark.catalog.tableExists(table_name)
 
     def get_table_type(self, table_name) -> str:
         pipeline_id = None
         table_type = None
-        if self.spark.catalog.tableExists(table_name):
+        if self.table_exists(table_name):
             # First check if it's a view using DESCRIBE EXTENDED to avoid DESCRIBE DETAIL error
             try:
                 table_type = (
@@ -255,7 +257,7 @@ class DatabricksOperations:
         return table_details["properties"].get("pipelines.pipelineId", None)
 
     def get_table_details(self, table_name: str) -> Tuple[str, bool]:
-        if self.spark.catalog.tableExists(table_name):
+        if self.table_exists(table_name):
             pipeline_id = self.get_pipeline_id(table_name)
             if pipeline_id:
                 # Handle streaming table or materialized view
