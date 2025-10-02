@@ -117,6 +117,7 @@ class ReconciliationConfig(BaseModel):
     # delta_share_config: Optional[DeltaShareConfig] = None
     source_catalog: str
     recon_outputs_catalog: str
+    recon_outputs_schema: str
     schema_check: Optional[bool] = True
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
@@ -129,6 +130,7 @@ class ReconciliationConfig(BaseModel):
             required_fields = [
                 "source_catalog",
                 "recon_outputs_catalog",
+                "recon_outputs_schema",
             ]
             missing_fields = [
                 field for field in required_fields if getattr(self, field) is None

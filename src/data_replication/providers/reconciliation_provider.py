@@ -92,7 +92,7 @@ class ReconciliationProvider(BaseProvider):
 
         # Ensure reconciliation_results schema exists for consolidated tables
         self.db_ops.create_schema_if_not_exists(
-            reconciliation_config.recon_outputs_catalog, "reconciliation_results"
+            reconciliation_config.recon_outputs_catalog, reconciliation_config.recon_outputs_schema
         )
 
         return super().process_schema_concurrently(schema_name, table_list)
