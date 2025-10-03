@@ -81,6 +81,9 @@ class BackupProvider(BaseProvider):
             f"Starting backup: {source_table} -> {backup_table}",
             extra={"run_id": self.run_id, "operation": "backup"},
         )
+        actual_source_table = None
+        dlt_flag = None
+        backup_query = None
 
         try:
             table_details = self.db_ops.get_table_details(source_table)
@@ -160,6 +163,7 @@ class BackupProvider(BaseProvider):
                         "backup_table": backup_table,
                         "source_table": actual_source_table,
                         "backup_query": backup_query,
+                        "dlt_flag": dlt_flag,
                     },
                     attempt_number=attempt,
                     max_attempts=max_attempts,
