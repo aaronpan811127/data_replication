@@ -196,7 +196,7 @@ class BaseProvider(ABC):
 
             for schema_name, table_list in schema_list:
                 schema_results = self.process_schema_concurrently(
-                    schema_name, table_list
+                    schema_name.upper(), table_list
                 )
                 results.extend(schema_results)
 
@@ -357,7 +357,7 @@ class BaseProvider(ABC):
             # Process all schemas
             schema_list = self.db_ops.get_all_schemas(self.catalog_name)
 
-        return [(item, []) for item in schema_list]
+        return [(item.upper(), []) for item in schema_list]
 
     def _get_tables(
         self, schema_name: str, table_list: List[TableConfig]
@@ -392,7 +392,7 @@ class BaseProvider(ABC):
             tables = self.db_ops.get_tables_in_schema(self.catalog_name, schema_name)
 
         # Apply exclusions first
-        tables = [table for table in tables if table not in exclude_names]
+        tables = [table.upper() for table in tables if table not in exclude_names]
 
         # Then filter by table type (STREAMING_TABLE and MANAGED only)
         return self.db_ops.filter_tables_by_type(self.catalog_name, schema_name, tables, self.catalog_config.table_types)

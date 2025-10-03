@@ -266,13 +266,13 @@ class DatabricksOperations:
                     table_name, pipeline_id
                 )
                 return {
-                    "table_name": actual_table_name,
+                    "table_name": actual_table_name.upper(),
                     "is_dlt": True,
                     "pipeline_id": pipeline_id,
                 }
 
             # If not a DLT table, just return the original table name and "delta"
-            return {"table_name": table_name, "is_dlt": False, "pipeline_id": None}
+            return {"table_name": table_name.upper(), "is_dlt": False, "pipeline_id": None}
         else:
             raise TableNotFoundError(f"Table {table_name} does not exist")
 
@@ -308,7 +308,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{table_name_only}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 2
@@ -316,7 +316,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 3
@@ -324,7 +324,7 @@ class DatabricksOperations:
             f"{catalog_name}.{table_name.split('.')[1]}.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 4
@@ -333,7 +333,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         raise Exception(

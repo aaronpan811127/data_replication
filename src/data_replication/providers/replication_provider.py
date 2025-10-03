@@ -87,6 +87,10 @@ class ReplicationProvider(BaseProvider):
             extra={"run_id": self.run_id, "operation": "replication"},
         )
 
+        step1_query = None
+        step2_query = None
+        dlt_flag = None
+
         try:
             # Refresh source table delta share metadata
             if not self.db_ops.table_exists(source_table):
@@ -112,7 +116,7 @@ class ReplicationProvider(BaseProvider):
                     source_table
                 ) != self.db_ops.get_table_fields(actual_target_table):
                     raise ReplicationError(
-                        f"Schema mismatch between intermediate table {source_table} "
+                        f"Schema mismatch between table {source_table} "
                         f"and target table {target_table}"
                     )
             else:
