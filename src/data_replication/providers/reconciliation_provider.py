@@ -75,6 +75,17 @@ class ReconciliationProvider(BaseProvider):
         """Process a single table for reconciliation."""
         return self._reconcile_table(schema_name, table_name)
 
+    def _get_filtered_table_reference(self, table_name: str, is_source: bool) -> str:
+        """Get table reference with optional filter applied."""
+        reconciliation_config = self.catalog_config.reconciliation_config
+        
+        if is_source and reconciliation_config.source_filter_expression:
+            return f"(SELECT * FROM {table_name} WHERE {reconciliation_config.source_filter_expression})"
+        elif not is_source and reconciliation_config.target_filter_expression:
+            return f"(SELECT * FROM {table_name} WHERE {reconciliation_config.target_filter_expression})"
+        else:
+            return table_name
+
     def setup_operation_catalogs(self) -> str:
         """Setup reconciliation-specific catalogs."""
         reconciliation_config = self.catalog_config.reconciliation_config
@@ -561,13 +572,19 @@ class ReconciliationProvider(BaseProvider):
     ) -> Dict[str, Any]:
         """Perform row count comparison between source and target tables."""
         try:
+            reconciliation_config = self.catalog_config.reconciliation_config
+            
+            # Get filtered table references
+            source_table_ref = self._get_filtered_table_reference(source_table, True)
+            target_table_ref = self._get_filtered_table_reference(target_table, False)
+            
             # Get row counts directly without creating a table
             row_count_query = f"""
             WITH source_count AS (
-                SELECT COUNT(*) as source_row_count FROM {source_table}
+                SELECT COUNT(*) as source_row_count FROM {source_table_ref}
             ),
             target_count AS (
-                SELECT COUNT(*) as target_row_count FROM {target_table}
+                SELECT COUNT(*) as target_row_count FROM {target_table_ref}
             )
             SELECT 
                 source_row_count,
@@ -600,6 +617,8 @@ class ReconciliationProvider(BaseProvider):
                 "source_count": comparison_result["source_row_count"],
                 "target_count": comparison_result["target_row_count"],
                 "difference": comparison_result["row_count_diff"],
+                "source_filter": reconciliation_config.source_filter_expression,
+                "target_filter": reconciliation_config.target_filter_expression,
                 "details": "Row count check completed successfully",
                 "attempt": attempt,
                 "max_attempts": max_attempts,
@@ -678,6 +697,10 @@ class ReconciliationProvider(BaseProvider):
                     "max_attempts": max_attempts,
                 }
 
+            # Get filtered table references
+            source_table_ref = self._get_filtered_table_reference(source_table, True)
+            target_table_ref = self._get_filtered_table_reference(target_table, False)
+            
             # Create a hash-based comparison for data content and insert only mismatched records
             field_list = "`" + "`,`".join(common_fields) + "`"
             field_map = ", ".join(
@@ -691,14 +714,14 @@ class ReconciliationProvider(BaseProvider):
                     hash({field_list}) as row_hash,
                     map({field_map}) as data_map,
                     {field_list}
-                FROM {source_table}
+                FROM {source_table_ref}
             ),
             target_hashes AS (
                 SELECT 
                     hash({field_list}) as row_hash,
                     map({field_map}) as data_map,
                     {field_list}
-                FROM {target_table}
+                FROM {target_table_ref}
             ),
             missing_in_target AS (
                 SELECT 

@@ -146,6 +146,8 @@ class ReconciliationConfig(BaseModel):
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
     exclude_columns: Optional[List[str]] = None
+    source_filter_expression: Optional[str] = None
+    target_filter_expression: Optional[str] = None
 
     @field_validator("source_catalog", "recon_outputs_catalog")
     @classmethod
