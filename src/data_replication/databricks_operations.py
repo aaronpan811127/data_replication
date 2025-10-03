@@ -97,8 +97,8 @@ class DatabricksOperations:
         return [
             table
             for table in table_names
-            if self.get_table_type(f"{catalog_name}.{schema_name}.{table}").upper()
-            in [type.upper() for type in table_types]
+            if self.get_table_type(f"{catalog_name}.{schema_name}.{table}").lower()
+            in [type.lower() for type in table_types]
         ]
 
     def get_all_schemas(self, catalog_name: str) -> List[str]:
@@ -266,13 +266,13 @@ class DatabricksOperations:
                     table_name, pipeline_id
                 )
                 return {
-                    "table_name": actual_table_name.upper(),
+                    "table_name": actual_table_name.lower(),
                     "is_dlt": True,
                     "pipeline_id": pipeline_id,
                 }
 
             # If not a DLT table, just return the original table name and "delta"
-            return {"table_name": table_name.upper(), "is_dlt": False, "pipeline_id": None}
+            return {"table_name": table_name.lower(), "is_dlt": False, "pipeline_id": None}
         else:
             raise TableNotFoundError(f"Table {table_name} does not exist")
 

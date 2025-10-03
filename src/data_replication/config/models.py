@@ -55,6 +55,12 @@ class TableConfig(BaseModel):
 
     table_name: str
 
+    @field_validator("table_name")
+    @classmethod
+    def validate_table_name(cls, v):
+        """Convert table name to lowercase."""
+        return v.lower() if v else v
+
 
 class SchemaConfig(BaseModel):
     """Configuration for individual schemas."""
@@ -63,6 +69,12 @@ class SchemaConfig(BaseModel):
     tables: Optional[List[TableConfig]] = None
     exclude_tables: Optional[List[TableConfig]] = None
 
+    @field_validator("schema_name")
+    @classmethod
+    def validate_schema_name(cls, v):
+        """Convert schema name to lowercase."""
+        return v.lower() if v else v
+
 
 class BackupConfig(BaseModel):
     """Configuration for backup operations."""
@@ -70,6 +82,12 @@ class BackupConfig(BaseModel):
     enabled: bool = True
     source_catalog: Optional[str] = None
     backup_catalog: Optional[str] = None
+
+    @field_validator("source_catalog", "backup_catalog")
+    @classmethod
+    def validate_catalog_names(cls, v):
+        """Convert catalog names to lowercase."""
+        return v.lower() if v else v
 
 
 # Delta Share support will be enabled in a future release
@@ -109,6 +127,12 @@ class ReplicationConfig(BaseModel):
     intermediate_catalog: Optional[str] = None
     enforce_schema: Optional[bool] = True
 
+    @field_validator("source_catalog", "intermediate_catalog")
+    @classmethod
+    def validate_catalog_names(cls, v):
+        """Convert catalog names to lowercase."""
+        return v.lower() if v else v
+
 
 class ReconciliationConfig(BaseModel):
     """Configuration for reconciliation operations."""
@@ -122,6 +146,18 @@ class ReconciliationConfig(BaseModel):
     row_count_check: Optional[bool] = True
     missing_data_check: Optional[bool] = True
     exclude_columns: Optional[List[str]] = None
+
+    @field_validator("source_catalog", "recon_outputs_catalog")
+    @classmethod
+    def validate_catalog_names(cls, v):
+        """Convert catalog names to lowercase."""
+        return v.lower() if v else v
+
+    @field_validator("recon_outputs_schema")
+    @classmethod
+    def validate_schema_name(cls, v):
+        """Convert schema name to lowercase."""
+        return v.lower() if v else v
 
     @model_validator(mode="after")
     def validate_reconciliation_config(self):
@@ -158,6 +194,12 @@ class TargetCatalogConfig(BaseModel):
     reconciliation_config: Optional[ReconciliationConfig] = None
     target_schemas: Optional[List[SchemaConfig]] = None
 
+    @field_validator("catalog_name")
+    @classmethod
+    def validate_catalog_name(cls, v):
+        """Convert catalog name to lowercase."""
+        return v.lower() if v else v
+
     @model_validator(mode="after")
     def validate_catalog_config(self):
         """
@@ -192,11 +234,11 @@ class LoggingConfig(BaseModel):
     def validate_level(cls, v):
         """Validate logging level."""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_levels:
+        if v.lower() not in valid_levels:
             raise ValueError(
                 f"Invalid logging level: {v}. Must be one of {valid_levels}"
             )
-        return v.upper()
+        return v.lower()
 
     @field_validator("format")
     @classmethod
@@ -251,8 +293,8 @@ class ReplicationSystemConfig(BaseModel):
     def derive_default_catalogs(self):
         """
         Derive default catalogs when not provided in the config.
-        - Backup catalogs: __replication_internal_{catalog_name}_to_{target_databricks_connect_config.name}
-        - Replication source catalogs: __replication_internal_{catalog_name}_from_{source_databricks_connect_config.name}
+        - Backup catalogs: __replication_internal_{catalog_name}_to_{target_name}
+        - Replication source catalogs: __replication_internal_{catalog_name}_from_{source_name}
         """
         target_name = self.target_databricks_connect_config.name
         source_name = self.source_databricks_connect_config.name
@@ -261,7 +303,9 @@ class ReplicationSystemConfig(BaseModel):
             # Derive default backup catalogs
             if catalog.backup_config and catalog.backup_config.enabled:
                 if catalog.backup_config.backup_catalog is None:
-                    default_backup_catalog = f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
+                    default_backup_catalog = (
+                        f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
+                    )
                     catalog.backup_config.backup_catalog = default_backup_catalog
                 # Derive default backup source catalogs
                 if catalog.backup_config.source_catalog is None:
@@ -270,7 +314,9 @@ class ReplicationSystemConfig(BaseModel):
             # Derive default replication source catalogs
             if catalog.replication_config and catalog.replication_config.enabled:
                 if catalog.replication_config.source_catalog is None:
-                    default_source_catalog = f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
+                    default_source_catalog = (
+                        f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
+                    )
                     catalog.replication_config.source_catalog = default_source_catalog
 
         return self
@@ -293,6 +339,18 @@ class AuditLogEntry(BaseModel):
     max_attempts: Optional[int] = None
     config_details: Optional[str] = None  # JSON string of the full configuration
     execution_user: Optional[str] = None  # User who executed the operation
+
+    @field_validator("catalog_name")
+    @classmethod
+    def validate_catalog_name(cls, v):
+        """Convert catalog name to lowercase."""
+        return v.lower() if v else v
+
+    @field_validator("schema_name", "table_name")
+    @classmethod
+    def validate_names(cls, v):
+        """Convert schema and table names to lowercase."""
+        return v.lower() if v else v
 
 
 class RunSummary(BaseModel):
@@ -325,3 +383,15 @@ class RunResult(BaseModel):
     details: Optional[dict] = None
     attempt_number: Optional[int] = None
     max_attempts: Optional[int] = None
+
+    @field_validator("catalog_name")
+    @classmethod
+    def validate_catalog_name(cls, v):
+        """Convert catalog name to lowercase."""
+        return v.lower() if v else v
+
+    @field_validator("schema_name", "table_name")
+    @classmethod
+    def validate_names(cls, v):
+        """Convert schema and table names to lowercase."""
+        return v.lower() if v else v
