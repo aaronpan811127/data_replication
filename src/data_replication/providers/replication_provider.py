@@ -58,6 +58,11 @@ class ReplicationProvider(BaseProvider):
                 replication_config.intermediate_catalog, schema_name
             )
 
+        # Create target schema if needed
+        self.db_ops.create_schema_if_not_exists(
+            self.catalog_config.catalog_name, schema_name
+        )
+
         return super().process_schema_concurrently(schema_name, table_list)
 
     def _replicate_table(
