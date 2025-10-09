@@ -178,7 +178,7 @@ class DatabricksOperations:
             return {"properties": properties}
 
     @retry_with_logging(retry_config=RetryConfig(retries=5, delay=3))
-    def table_exists(self, table_name: str) -> bool:
+    def refresh_table_metadata(self, table_name: str) -> bool:
         """
         Check if a table exists.
 
@@ -194,7 +194,10 @@ class DatabricksOperations:
     def get_table_type(self, table_name) -> str:
         pipeline_id = None
         table_type = None
-        if self.table_exists(table_name):
+        # Refresh table metadata before checking if it exists
+        self.refresh_table_metadata(table_name)
+
+        if self.spark.catalog.tableExists(table_name):
             # First check if it's a view using DESCRIBE EXTENDED to avoid DESCRIBE DETAIL error
             try:
                 table_type = (
@@ -258,7 +261,7 @@ class DatabricksOperations:
         return table_details["properties"].get("pipelines.pipelineId", None)
 
     def get_table_details(self, table_name: str) -> Tuple[str, bool]:
-        if self.table_exists(table_name):
+        if self.spark.catalog.tableExists(table_name):
             pipeline_id = self.get_pipeline_id(table_name)
             if pipeline_id:
                 # Handle streaming table or materialized view
@@ -272,7 +275,11 @@ class DatabricksOperations:
                 }
 
             # If not a DLT table, just return the original table name and "delta"
-            return {"table_name": table_name.lower(), "is_dlt": False, "pipeline_id": None}
+            return {
+                "table_name": table_name.lower(),
+                "is_dlt": False,
+                "pipeline_id": None,
+            }
         else:
             raise TableNotFoundError(f"Table {table_name} does not exist")
 

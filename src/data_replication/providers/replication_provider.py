@@ -97,8 +97,8 @@ class ReplicationProvider(BaseProvider):
         dlt_flag = None
 
         try:
-            # Refresh source table delta share metadata
-            if not self.db_ops.table_exists(source_table):
+            # Check if source table exists
+            if not self.spark.catalog.tableExists(source_table):
                 raise TableNotFoundError(f"Source table does not exist: {source_table}")
 
             try:
@@ -116,7 +116,7 @@ class ReplicationProvider(BaseProvider):
                 pipeline_id = None
                 actual_target_table = target_table
 
-            if self.db_ops.table_exists(target_table):
+            if self.spark.catalog.tableExists(actual_target_table):
                 if self.db_ops.get_table_fields(
                     source_table
                 ) != self.db_ops.get_table_fields(actual_target_table):
@@ -124,8 +124,6 @@ class ReplicationProvider(BaseProvider):
                         f"Schema mismatch between table {source_table} "
                         f"and target table {target_table}"
                     )
-            else:
-                raise TableNotFoundError(f"Source table does not exist: {source_table}")
 
             # Use custom retry decorator with logging
             @retry_with_logging(self.retry, self.logger)
