@@ -7,19 +7,14 @@ different components to log operations to audit tables.
 
 import json
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from databricks.connect import DatabricksSession
-from pyspark.sql.types import (
-    StructType,
-    StructField,
-    StringType,
-    TimestampType,
-    DoubleType,
-    IntegerType,
-)
-from data_replication.databricks_operations import DatabricksOperations
+from pyspark.sql.types import (DoubleType, IntegerType, StringType,
+                               StructField, StructType, TimestampType)
+
 from data_replication.audit.logger import DataReplicationLogger
+from data_replication.databricks_operations import DatabricksOperations
 
 
 class AuditLogger:
@@ -49,11 +44,15 @@ class AuditLogger:
         self.logger = logger
         self.run_id = run_id
         self.audit_table = audit_table
-        self.config_details_json = json.dumps(config_details, default=str) if config_details else None
-        
+        self.config_details_json = (
+            json.dumps(config_details, default=str) if config_details else None
+        )
+
         # Get current execution user using Spark SQL
         try:
-            self.execution_user = spark.sql("SELECT current_user() as user").collect()[0]["user"]
+            self.execution_user = spark.sql("SELECT current_user() as user").collect()[
+                0
+            ]["user"]
         except Exception:
             self.execution_user = "unknown"
 
@@ -187,4 +186,6 @@ class AuditLogger:
             audit_df.write.mode("append").saveAsTable(self.audit_table)
         except Exception as e:
             # Fallback to standard logging if audit table logging fails
-            self.logger.warning(f"Failed to log to audit table {self.audit_table}: {str(e)}")
+            self.logger.warning(
+                f"Failed to log to audit table {self.audit_table}: {str(e)}"
+            )

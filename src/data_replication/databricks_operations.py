@@ -5,12 +5,12 @@ This module provides utilities for interacting with Databricks catalogs,
 schemas, and tables.
 """
 
-from typing import List
-from typing import Tuple
+from typing import List, Tuple
+
 from databricks.connect import DatabricksSession
 from pyspark.sql.functions import col
 
-from data_replication.config.models import TableType, RetryConfig
+from data_replication.config.models import RetryConfig, TableType
 from data_replication.exceptions import TableNotFoundError
 from data_replication.utils import retry_with_logging
 

@@ -305,9 +305,7 @@ class ReplicationSystemConfig(BaseModel):
             # Derive default backup catalogs
             if catalog.backup_config and catalog.backup_config.enabled:
                 if catalog.backup_config.backup_catalog is None:
-                    default_backup_catalog = (
-                        f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
-                    )
+                    default_backup_catalog = f"__replication_internal_{catalog.catalog_name}_to_{target_name}"
                     catalog.backup_config.backup_catalog = default_backup_catalog
                 # Derive default backup source catalogs
                 if catalog.backup_config.source_catalog is None:
@@ -316,9 +314,7 @@ class ReplicationSystemConfig(BaseModel):
             # Derive default replication source catalogs
             if catalog.replication_config and catalog.replication_config.enabled:
                 if catalog.replication_config.source_catalog is None:
-                    default_source_catalog = (
-                        f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
-                    )
+                    default_source_catalog = f"__replication_internal_{catalog.catalog_name}_from_{source_name}"
                     catalog.replication_config.source_catalog = default_source_catalog
 
         return self

@@ -6,20 +6,16 @@ row count validation, and missing data detection between source and target table
 """
 
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from databricks.connect import DatabricksSession
 
 from ..audit.logger import DataReplicationLogger
-from ..config.models import (
-    RetryConfig,
-    RunResult,
-    TargetCatalogConfig,
-)
-from .base_provider import BaseProvider
+from ..config.models import RetryConfig, RunResult, TargetCatalogConfig
 from ..databricks_operations import DatabricksOperations
-from ..utils import retry_with_logging
 from ..exceptions import ReconciliationError, TableNotFoundError
+from ..utils import retry_with_logging
+from .base_provider import BaseProvider
 
 
 class ReconciliationProvider(BaseProvider):
@@ -161,7 +157,10 @@ class ReconciliationProvider(BaseProvider):
                 schema_start_time = datetime.now(timezone.utc)
                 self.logger.info(
                     f"Starting schema check for {source_table} vs {target_table}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
                 schema_result = self._perform_schema_check(
                     source_table,
@@ -174,7 +173,10 @@ class ReconciliationProvider(BaseProvider):
                 self.logger.info(
                     f"Schema check completed for {source_table} vs {target_table} "
                     f"({schema_duration:.2f}s) - {'PASSED' if schema_result['passed'] else 'FAILED'}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
                 reconciliation_results["schema_check"] = schema_result
@@ -183,7 +185,10 @@ class ReconciliationProvider(BaseProvider):
                     continue_checks = False
                     self.logger.warning(
                         f"Schema check failed for {source_table} vs {target_table}. Skipping remaining checks.",
-                        extra={"run_id": self.run_id, "operation": "reconciliation"},
+                        extra={
+                            "run_id": self.run_id,
+                            "operation": "reconciliation",
+                        },
                     )
 
             # Row count check
@@ -191,7 +196,10 @@ class ReconciliationProvider(BaseProvider):
                 row_count_start_time = datetime.now(timezone.utc)
                 self.logger.info(
                     f"Starting row count check for {source_table} vs {target_table}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
                 row_count_result = self._perform_row_count_check(
                     source_table,
@@ -206,7 +214,10 @@ class ReconciliationProvider(BaseProvider):
                 self.logger.info(
                     f"Row count check completed for {source_table} vs {target_table} "
                     f"({row_count_duration:.2f}s) - {'PASSED' if row_count_result['passed'] else 'FAILED'}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
                 reconciliation_results["row_count_check"] = row_count_result
@@ -215,7 +226,10 @@ class ReconciliationProvider(BaseProvider):
                     continue_checks = False
                     self.logger.warning(
                         f"Row count check failed for {source_table} vs {target_table}. Skipping remaining checks.",
-                        extra={"run_id": self.run_id, "operation": "reconciliation"},
+                        extra={
+                            "run_id": self.run_id,
+                            "operation": "reconciliation",
+                        },
                     )
             elif reconciliation_config.row_count_check and not continue_checks:
                 skipped_checks.append("row_count_check")
@@ -230,7 +244,10 @@ class ReconciliationProvider(BaseProvider):
                 missing_data_start_time = datetime.now(timezone.utc)
                 self.logger.info(
                     f"Starting missing data check for {source_table} vs {target_table}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
                 missing_data_result = self._perform_missing_data_check(
                     source_table,
@@ -245,7 +262,10 @@ class ReconciliationProvider(BaseProvider):
                 self.logger.info(
                     f"Missing data check completed for {source_table} vs {target_table} "
                     f"({missing_data_duration:.2f}s) - {'PASSED' if missing_data_result['passed'] else 'FAILED'}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
                 reconciliation_results["missing_data_check"] = missing_data_result
@@ -263,7 +283,10 @@ class ReconciliationProvider(BaseProvider):
             if skipped_checks:
                 self.logger.info(
                     f"Skipped checks for {source_table} vs {target_table}: {skipped_checks}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
             end_time = datetime.now(timezone.utc)
@@ -273,7 +296,10 @@ class ReconciliationProvider(BaseProvider):
                 self.logger.info(
                     f"Reconciliation passed all checks: {source_table} vs {target_table} "
                     f"({duration:.2f}s)",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
                 # Collect check durations for audit logging
@@ -319,7 +345,10 @@ class ReconciliationProvider(BaseProvider):
                 error_msg = f"Reconciliation failed checks: {failed_checks}"
                 self.logger.error(
                     f"Reconciliation failed: {source_table} vs {target_table} - {error_msg}",
-                    extra={"run_id": self.run_id, "operation": "reconciliation"},
+                    extra={
+                        "run_id": self.run_id,
+                        "operation": "reconciliation",
+                    },
                 )
 
                 # Collect check durations for audit logging (for failed case)
@@ -459,7 +488,7 @@ class ReconciliationProvider(BaseProvider):
             schema_insert_query = f"""
             INSERT INTO {schema_comparison_table}
             WITH source_schema_info AS (
-                SELECT 
+                SELECT
                     column_name,
                     data_type,
                     is_nullable,
@@ -472,7 +501,7 @@ class ReconciliationProvider(BaseProvider):
                   {exclude_filter}
             ),
             target_schema_info AS (
-                SELECT 
+                SELECT
                     column_name,
                     data_type,
                     is_nullable,
@@ -485,13 +514,13 @@ class ReconciliationProvider(BaseProvider):
                   {exclude_filter}
             ),
             schema_diff AS (
-                SELECT 
+                SELECT
                     COALESCE(s.column_name, t.column_name) as column_name,
                     s.data_type as source_data_type,
                     t.data_type as target_data_type,
                     s.is_nullable as source_nullable,
                     t.is_nullable as target_nullable,
-                    CASE 
+                    CASE
                         WHEN s.column_name IS NULL THEN 'missing_in_source'
                         WHEN t.column_name IS NULL THEN 'missing_in_target'
                         WHEN s.data_type != t.data_type THEN 'type_mismatch'
@@ -501,7 +530,7 @@ class ReconciliationProvider(BaseProvider):
                 FROM source_schema_info s
                 FULL OUTER JOIN target_schema_info t ON s.column_name = t.column_name
             )
-            SELECT 
+            SELECT
                 '{self.run_id}' as run_id,
                 '{target_catalog}' as target_catalog,
                 '{target_schema}' as target_schema,
@@ -535,8 +564,9 @@ class ReconciliationProvider(BaseProvider):
                 }
 
             # Check if there are any mismatches for this specific table
-            mismatch_count_df = self.spark.sql(f"""
-                SELECT COUNT(*) as mismatch_count 
+            mismatch_count_df = self.spark.sql(
+                f"""
+                SELECT COUNT(*) as mismatch_count
                 FROM {schema_comparison_table}
                 WHERE run_id = '{self.run_id}'
                   AND target_catalog = '{target_catalog}'
@@ -545,7 +575,8 @@ class ReconciliationProvider(BaseProvider):
                   AND source_catalog = '{source_catalog}'
                   AND source_schema = '{source_schema}'
                   AND source_table = '{source_tbl}'
-            """)
+            """
+            )
 
             mismatch_count = mismatch_count_df.collect()[0]["mismatch_count"]
 
@@ -589,11 +620,11 @@ class ReconciliationProvider(BaseProvider):
             target_count AS (
                 SELECT COUNT(*) as target_row_count FROM {target_table_ref}
             )
-            SELECT 
+            SELECT
                 source_row_count,
                 target_row_count,
                 target_row_count - source_row_count as row_count_diff,
-                CASE 
+                CASE
                     WHEN source_row_count = target_row_count THEN 'match'
                     ELSE 'mismatch'
                 END as comparison_result
@@ -713,21 +744,21 @@ class ReconciliationProvider(BaseProvider):
             missing_data_insert_query = f"""
             INSERT INTO {missing_data_table}
             WITH source_hashes AS (
-                SELECT 
+                SELECT
                     hash({field_list}) as row_hash,
                     map({field_map}) as data_map,
                     {field_list}
                 FROM {source_table_ref}
             ),
             target_hashes AS (
-                SELECT 
+                SELECT
                     hash({field_list}) as row_hash,
                     map({field_map}) as data_map,
                     {field_list}
                 FROM {target_table_ref}
             ),
             missing_in_target AS (
-                SELECT 
+                SELECT
                     'missing_in_target' as issue_type,
                     s.data_map as data
                 FROM source_hashes s
@@ -735,14 +766,14 @@ class ReconciliationProvider(BaseProvider):
                 WHERE t.row_hash IS NULL
             ),
             missing_in_source AS (
-                SELECT 
+                SELECT
                     'missing_in_source' as issue_type,
                     t.data_map as data
                 FROM target_hashes t
                 LEFT JOIN source_hashes s ON t.row_hash = s.row_hash
                 WHERE s.row_hash IS NULL
             )
-            SELECT 
+            SELECT
                 '{self.run_id}' as run_id,
                 '{target_catalog}' as target_catalog,
                 '{target_schema}' as target_schema,
@@ -755,7 +786,7 @@ class ReconciliationProvider(BaseProvider):
                 current_timestamp() as check_timestamp
             FROM missing_in_target
             UNION ALL
-            SELECT 
+            SELECT
                 '{self.run_id}' as run_id,
                 '{target_catalog}' as target_catalog,
                 '{target_schema}' as target_schema,
@@ -783,8 +814,9 @@ class ReconciliationProvider(BaseProvider):
                 }
 
             # Get summary of missing data for this specific table
-            summary_df = self.spark.sql(f"""
-                SELECT 
+            summary_df = self.spark.sql(
+                f"""
+                SELECT
                     issue_type,
                     COUNT(*) as row_count
                 FROM {missing_data_table}
@@ -796,7 +828,8 @@ class ReconciliationProvider(BaseProvider):
                   AND source_schema = '{source_schema}'
                   AND source_table = '{source_tbl}'
                 GROUP BY issue_type
-            """)
+            """
+            )
 
             comparison_results = summary_df.collect()
             total_missing = sum(row["row_count"] for row in comparison_results)

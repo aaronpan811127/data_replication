@@ -22,7 +22,9 @@ class ConfigLoader:
     """Configuration loader for the data replication system."""
 
     @staticmethod
-    def load_from_file(config_path: Union[str, Path]) -> ReplicationSystemConfig:
+    def load_from_file(
+        config_path: Union[str, Path],
+    ) -> ReplicationSystemConfig:
         """
         Load and validate configuration from a YAML file.
 
@@ -82,7 +84,9 @@ class ConfigLoader:
             raise ConfigurationError(f"Configuration validation failed: {e}") from e
 
     @staticmethod
-    def save_to_file(config: ReplicationSystemConfig, config_path: Union[str, Path]) -> None:
+    def save_to_file(
+        config: ReplicationSystemConfig, config_path: Union[str, Path]
+    ) -> None:
         """
         Save a configuration to a YAML file.
 

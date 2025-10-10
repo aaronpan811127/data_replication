@@ -6,8 +6,8 @@ This module provides the primary CLI interface for all replication operations
 including backup, delta share, replication, and reconciliation.
 """
 
-import sys
 import os
+import sys
 
 # Determine the parent directory of the current script for module imports
 pwd = ""
@@ -31,14 +31,16 @@ if parent_folder not in sys.path:
     sys.path.append(parent_folder)
 
 import argparse
-from pathlib import Path
 import uuid
+from pathlib import Path
+
 from databricks.sdk import WorkspaceClient
-from data_replication.utils import create_spark_session
+
 from data_replication.audit.logger import DataReplicationLogger
 from data_replication.config.loader import ConfigLoader
 from data_replication.exceptions import ConfigurationError
 from data_replication.providers.provider_factory import ProviderFactory
+from data_replication.utils import create_spark_session
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -155,7 +157,10 @@ def main():
     # Validate config file exists
     config_path = Path(args.config_file)
     if not config_path.exists():
-        print(f"Error: Configuration file not found: {config_path}", file=sys.stderr)
+        print(
+            f"Error: Configuration file not found: {config_path}",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -180,7 +185,10 @@ def main():
             )
             return 1
 
-        if config.execute_at == "target" and args.operation in ["backup", "all"]:
+        if config.execute_at == "target" and args.operation in [
+            "backup",
+            "all",
+        ]:
             if (
                 not config.source_databricks_connect_config.host
                 or not config.source_databricks_connect_config.token
@@ -315,6 +323,7 @@ def main():
         print(f"Configuration error: {e}", file=sys.stderr)
     except Exception as e:
         print(f"Operation failed: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

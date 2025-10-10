@@ -8,14 +8,11 @@ streaming tables, materialized views, and intermediate catalogs.
 from datetime import datetime, timezone
 from typing import List
 
-
 # from delta.tables import DeltaTable
-from ..config.models import (
-    RunResult,
-)
-from .base_provider import BaseProvider
-from ..utils import retry_with_logging
+from ..config.models import RunResult
 from ..exceptions import ReplicationError, TableNotFoundError
+from ..utils import retry_with_logging
+from .base_provider import BaseProvider
 
 
 class ReplicationProvider(BaseProvider):
@@ -287,7 +284,14 @@ class ReplicationProvider(BaseProvider):
             step1_query
         )
         if not result1:
-            return result1, last_exception, attempt, max_attempts, step1_query, None
+            return (
+                result1,
+                last_exception,
+                attempt,
+                max_attempts,
+                step1_query,
+                None,
+            )
 
         # # Step 2: Use insert overwrite to replicate from intermediate to target
         # step2_query = self._build_insert_overwrite_query(

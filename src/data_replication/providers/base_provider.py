@@ -6,32 +6,22 @@ provider types like backup, replication, and reconciliation.
 """
 
 from abc import ABC, abstractmethod
-from concurrent.futures import (
-    ThreadPoolExecutor,
-    as_completed,
-    TimeoutError as FuturesTimeoutError,
-)
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from concurrent.futures import as_completed
 from datetime import datetime, timezone
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 from databricks.connect import DatabricksSession
 from pyspark.sql.utils import AnalysisException
 
 from ..audit.logger import DataReplicationLogger
-from ..config.models import (
-    RetryConfig,
-    RunResult,
-    TargetCatalogConfig,
-    TableConfig,
-)
+from ..config.models import (RetryConfig, RunResult, TableConfig,
+                             TargetCatalogConfig)
 from ..databricks_operations import DatabricksOperations
-from ..exceptions import (
-    DataReplicationError,
-    SparkSessionError,
-    BackupError,
-    ReplicationError,
-    ReconciliationError,
-)
+from ..exceptions import (BackupError, DataReplicationError,
+                          ReconciliationError, ReplicationError,
+                          SparkSessionError)
 
 
 class BaseProvider(ABC):
@@ -184,12 +174,13 @@ class BaseProvider(ABC):
 
             self.logger.info(
                 f"Starting {self.get_operation_name()}: {self.catalog_name}->{self.catalog_config.catalog_name}",
-                extra={"run_id": self.run_id, "operation": self.get_operation_name()},
+                extra={
+                    "run_id": self.run_id,
+                    "operation": self.get_operation_name(),
+                },
             )
             # Ensure target catalog exists
-            self.db_ops.create_catalog_if_not_exists(
-                self.catalog_config.catalog_name
-            )
+            self.db_ops.create_catalog_if_not_exists(self.catalog_config.catalog_name)
 
             # Get schemas to process
             schema_list = self._get_schemas()
@@ -285,7 +276,11 @@ class BaseProvider(ABC):
 
         except Exception as e:
             result = self._handle_exception(
-                e, "processing schema", catalog_name, schema_name, start_time=start_time
+                e,
+                "processing schema",
+                catalog_name,
+                schema_name,
+                start_time=start_time,
             )
             results.append(result)
 
@@ -359,9 +354,7 @@ class BaseProvider(ABC):
 
         return [(item, []) for item in schema_list]
 
-    def _get_tables(
-        self, schema_name: str, table_list: List[TableConfig]
-    ) -> List[str]:
+    def _get_tables(self, schema_name: str, table_list: List[TableConfig]) -> List[str]:
         """
         Get list of tables to process in a schema based on configuration.
 
@@ -395,4 +388,9 @@ class BaseProvider(ABC):
         tables = [table for table in tables if table not in exclude_names]
 
         # Then filter by table type (STREAMING_TABLE and MANAGED only)
-        return self.db_ops.filter_tables_by_type(self.catalog_name, schema_name, tables, self.catalog_config.table_types)
+        return self.db_ops.filter_tables_by_type(
+            self.catalog_name,
+            schema_name,
+            tables,
+            self.catalog_config.table_types,
+        )

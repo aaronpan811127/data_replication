@@ -8,13 +8,10 @@ for both delta tables and streaming tables/materialized views.
 from datetime import datetime, timezone
 from typing import List
 
-
-from ..config.models import (
-    RunResult,
-)
-from .base_provider import BaseProvider
-from ..utils import retry_with_logging
+from ..config.models import RunResult
 from ..exceptions import BackupError
+from ..utils import retry_with_logging
+from .base_provider import BaseProvider
 
 
 class BackupProvider(BaseProvider):
