@@ -8,14 +8,11 @@ streaming tables, materialized views, and intermediate catalogs.
 from datetime import datetime, timezone
 from typing import List
 
-
 # from delta.tables import DeltaTable
-from ..config.models import (
-    RunResult,
-)
-from .base_provider import BaseProvider
-from ..utils import retry_with_logging
+from ..config.models import RunResult
 from ..exceptions import ReplicationError, TableNotFoundError
+from ..utils import retry_with_logging
+from .base_provider import BaseProvider
 
 
 class ReplicationProvider(BaseProvider):
@@ -58,6 +55,11 @@ class ReplicationProvider(BaseProvider):
                 replication_config.intermediate_catalog, schema_name
             )
 
+        # Create target schema if needed
+        self.db_ops.create_schema_if_not_exists(
+            self.catalog_config.catalog_name, schema_name
+        )
+
         return super().process_schema_concurrently(schema_name, table_list)
 
     def _replicate_table(
@@ -87,10 +89,14 @@ class ReplicationProvider(BaseProvider):
             extra={"run_id": self.run_id, "operation": "replication"},
         )
 
+        step1_query = None
+        step2_query = None
+        dlt_flag = None
+
         try:
-            # Refresh source table delta share metadata
+            # Check if source table exists
             if not self.spark.catalog.tableExists(source_table):
-                self.spark.catalog.tableExists(source_table)
+                raise TableNotFoundError(f"Source table does not exist: {source_table}")
 
             try:
                 table_details = self.db_ops.get_table_details(target_table)
@@ -107,12 +113,12 @@ class ReplicationProvider(BaseProvider):
                 pipeline_id = None
                 actual_target_table = target_table
 
-            if self.spark.catalog.tableExists(target_table):
+            if self.spark.catalog.tableExists(actual_target_table):
                 if self.db_ops.get_table_fields(
                     source_table
                 ) != self.db_ops.get_table_fields(actual_target_table):
                     raise ReplicationError(
-                        f"Schema mismatch between intermediate table {source_table} "
+                        f"Schema mismatch between table {source_table} "
                         f"and target table {target_table}"
                     )
 
@@ -121,27 +127,6 @@ class ReplicationProvider(BaseProvider):
             def replication_operation(query: str):
                 self.spark.sql(query)
                 return True
-
-            # def replication_operation(source_table: str, target_table: str):
-            #     dt = DeltaTable.forName(self.spark, source_table)
-            #     if self.spark.catalog.tableExists(target_table):
-            #         desc_detail_df = self.spark.sql(f"DESC DETAIL {target_table}")
-            #         properties = desc_detail_df.select("properties").first()[
-            #             "properties"
-            #         ]
-            #         dt.clone(
-            #             target=target_table,
-            #             isShallow=False,
-            #             replace=True,
-            #             properties=properties,
-            #         )
-            #     else:
-            #         dt.clone(
-            #             target=target_table,
-            #             isShallow=False,
-            #             replace=True
-            #         )
-            #     return True
 
             # Determine replication strategy based on table type and config
             if replication_config.intermediate_catalog:
@@ -299,7 +284,14 @@ class ReplicationProvider(BaseProvider):
             step1_query
         )
         if not result1:
-            return result1, last_exception, attempt, max_attempts, step1_query, None
+            return (
+                result1,
+                last_exception,
+                attempt,
+                max_attempts,
+                step1_query,
+                None,
+            )
 
         # # Step 2: Use insert overwrite to replicate from intermediate to target
         # step2_query = self._build_insert_overwrite_query(

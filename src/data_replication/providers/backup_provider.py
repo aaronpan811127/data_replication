@@ -8,13 +8,10 @@ for both delta tables and streaming tables/materialized views.
 from datetime import datetime, timezone
 from typing import List
 
-
-from ..config.models import (
-    RunResult,
-)
-from .base_provider import BaseProvider
-from ..utils import retry_with_logging
+from ..config.models import RunResult
 from ..exceptions import BackupError
+from ..utils import retry_with_logging
+from .base_provider import BaseProvider
 
 
 class BackupProvider(BaseProvider):
@@ -81,6 +78,9 @@ class BackupProvider(BaseProvider):
             f"Starting backup: {source_table} -> {backup_table}",
             extra={"run_id": self.run_id, "operation": "backup"},
         )
+        actual_source_table = None
+        dlt_flag = None
+        backup_query = None
 
         try:
             table_details = self.db_ops.get_table_details(source_table)
@@ -160,6 +160,7 @@ class BackupProvider(BaseProvider):
                         "backup_table": backup_table,
                         "source_table": actual_source_table,
                         "backup_query": backup_query,
+                        "dlt_flag": dlt_flag,
                     },
                     attempt_number=attempt,
                     max_attempts=max_attempts,

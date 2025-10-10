@@ -5,13 +5,14 @@ This module provides utilities for interacting with Databricks catalogs,
 schemas, and tables.
 """
 
-from typing import List
-from typing import Tuple
+from typing import List, Tuple
+
 from databricks.connect import DatabricksSession
 from pyspark.sql.functions import col
 
-from data_replication.config.models import TableType
+from data_replication.config.models import RetryConfig, TableType
 from data_replication.exceptions import TableNotFoundError
+from data_replication.utils import retry_with_logging
 
 
 class DatabricksOperations:
@@ -96,8 +97,8 @@ class DatabricksOperations:
         return [
             table
             for table in table_names
-            if self.get_table_type(f"{catalog_name}.{schema_name}.{table}").upper()
-            in [type.upper() for type in table_types]
+            if self.get_table_type(f"{catalog_name}.{schema_name}.{table}").lower()
+            in [type.lower() for type in table_types]
         ]
 
     def get_all_schemas(self, catalog_name: str) -> List[str]:
@@ -176,7 +177,8 @@ class DatabricksOperations:
             )
             return {"properties": properties}
 
-    def table_exists(self, table_name: str) -> bool:
+    @retry_with_logging(retry_config=RetryConfig(retries=5, delay=3))
+    def refresh_table_metadata(self, table_name: str) -> bool:
         """
         Check if a table exists.
 
@@ -186,11 +188,15 @@ class DatabricksOperations:
         Returns:
             True if table exists, False otherwise
         """
+        # Retry to refresh table metadata in delta share catalog
         return self.spark.catalog.tableExists(table_name)
 
     def get_table_type(self, table_name) -> str:
         pipeline_id = None
         table_type = None
+        # Refresh table metadata before checking if it exists
+        self.refresh_table_metadata(table_name)
+
         if self.spark.catalog.tableExists(table_name):
             # First check if it's a view using DESCRIBE EXTENDED to avoid DESCRIBE DETAIL error
             try:
@@ -263,13 +269,17 @@ class DatabricksOperations:
                     table_name, pipeline_id
                 )
                 return {
-                    "table_name": actual_table_name,
+                    "table_name": actual_table_name.lower(),
                     "is_dlt": True,
                     "pipeline_id": pipeline_id,
                 }
 
             # If not a DLT table, just return the original table name and "delta"
-            return {"table_name": table_name, "is_dlt": False, "pipeline_id": None}
+            return {
+                "table_name": table_name.lower(),
+                "is_dlt": False,
+                "pipeline_id": None,
+            }
         else:
             raise TableNotFoundError(f"Table {table_name} does not exist")
 
@@ -305,7 +315,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{table_name_only}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 2
@@ -313,7 +323,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 3
@@ -321,7 +331,7 @@ class DatabricksOperations:
             f"{catalog_name}.{table_name.split('.')[1]}.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         # Check possible locations for the internal table 4
@@ -330,7 +340,7 @@ class DatabricksOperations:
             f"`__databricks_internal`.`{internal_schema_name}`.`{internal_table_name}`"
         )
         # print(full_internal_table_name)
-        if self.table_exists(full_internal_table_name):
+        if self.spark.catalog.tableExists(full_internal_table_name):
             return full_internal_table_name
 
         raise Exception(

@@ -6,18 +6,8 @@ This module provides the primary CLI interface for all replication operations
 including backup, delta share, replication, and reconciliation.
 """
 
-import sys
 import os
-import argparse
-from pathlib import Path
-import time
-import uuid
-from databricks.sdk import WorkspaceClient
-from data_replication.utils import create_spark_session
-from data_replication.audit.logger import DataReplicationLogger
-from data_replication.config.loader import ConfigLoader
-from data_replication.exceptions import ConfigurationError
-from data_replication.providers.provider_factory import ProviderFactory
+import sys
 
 # Determine the parent directory of the current script for module imports
 pwd = ""
@@ -33,9 +23,24 @@ try:
 except NameError:
     # Fallback when running outside Databricks (e.g. local development or tests)
     parent_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+if not parent_folder.startswith("/Workspace"):
+    parent_folder = "/Workspace" + parent_folder
 # Append the framework path to the system path for module resolution
 if parent_folder not in sys.path:
     sys.path.append(parent_folder)
+
+import argparse
+import uuid
+from pathlib import Path
+
+from databricks.sdk import WorkspaceClient
+
+from data_replication.audit.logger import DataReplicationLogger
+from data_replication.config.loader import ConfigLoader
+from data_replication.exceptions import ConfigurationError
+from data_replication.providers.provider_factory import ProviderFactory
+from data_replication.utils import create_spark_session
 
 
 def create_logger(config) -> DataReplicationLogger:
@@ -152,7 +157,10 @@ def main():
     # Validate config file exists
     config_path = Path(args.config_file)
     if not config_path.exists():
-        print(f"Error: Configuration file not found: {config_path}", file=sys.stderr)
+        print(
+            f"Error: Configuration file not found: {config_path}",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -177,7 +185,10 @@ def main():
             )
             return 1
 
-        if config.execute_at == "target" and args.operation in ["backup", "all"]:
+        if config.execute_at == "target" and args.operation in [
+            "backup",
+            "all",
+        ]:
             if (
                 not config.source_databricks_connect_config.host
                 or not config.source_databricks_connect_config.token

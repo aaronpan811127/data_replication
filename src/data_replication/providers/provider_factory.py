@@ -5,21 +5,18 @@ This module provides a factory class that creates provider instances and manages
 the execution of backup, replication, and reconciliation operations.
 """
 
-import uuid
 import json
+import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Type
 
 from databricks.connect import DatabricksSession
-from ..databricks_operations import DatabricksOperations
-from ..audit.logger import DataReplicationLogger
+
 from ..audit.audit_logger import AuditLogger
-from ..config.models import (
-    ReplicationSystemConfig,
-    RunResult,
-    RunSummary,
-    TargetCatalogConfig,
-)
+from ..audit.logger import DataReplicationLogger
+from ..config.models import (ReplicationSystemConfig, RunResult, RunSummary,
+                             TargetCatalogConfig)
+from ..databricks_operations import DatabricksOperations
 
 if TYPE_CHECKING:
     from .base_provider import BaseProvider
@@ -75,7 +72,11 @@ class ProviderFactory:
         if self.config.audit_config and self.config.audit_config.audit_table:
             try:
                 # Convert config to dict for logging
-                config_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else self.config.dict()
+                config_dict = (
+                    self.config.model_dump()
+                    if hasattr(self.config, "model_dump")
+                    else self.config.dict()
+                )
                 self.audit_logger = AuditLogger(
                     spark=self.logging_spark,
                     db_ops=self.db_ops,
